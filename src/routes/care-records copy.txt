@@ -1,0 +1,141 @@
+import { createFileRoute } from "@tanstack/react-router";
+import { useState } from "react";
+import { AppShell } from "@/components/app-shell";
+import { Card, SectionHeader, Badge } from "@/components/ui-kit";
+import { FileText, ShieldCheck, MoreHorizontal, Eye, Plus } from "lucide-react";
+import { CreateCareRecordModal, VerifyRecordDialog, FloatingActionButton, ArchiveDialog } from "@/components/modals";
+import { ReplayHistoryButton } from "@/components/integrity-playback";
+import { fakeSha256 } from "@/lib/hash";
+
+export const Route = createFileRoute("/care-records copy")({
+  head: () => ({ meta: [{ title: "Care Records — CareGuard" }] }),
+  component: CareRecordsPage,
+});
+
+const records = [
+  { id: "CR-8834", title: "Daily care plan", resident: "Margaret Ellis", by: "James Owusu", updated: "12 min ago", status: "Verified", hash: "9f4a…c2e1", time: "12:41" },
+  { id: "CR-8833", title: "Fall risk assessment", resident: "Arthur Whitfield", by: "Priya Shah", updated: "38 min ago", status: "Verified", hash: "3d78…91af", time: "12:18" },
+  { id: "CR-8832", title: "Nutrition & hydration log", resident: "Beatrice Coleman", by: "Ella Morgan", updated: "1 hr ago", status: "Pending", hash: "0b19…7d3c", time: "11:48" },
+  { id: "CR-8821", title: "Behavioural observation", resident: "Nora Blake", by: "Priya Shah", updated: "42 min ago", status: "Integrity failed", hash: "aa72…4419", time: "12:04" },
+  { id: "CR-8815", title: "Wound care record", resident: "Frank Doyle", by: "James Owusu", updated: "2 hr ago", status: "Verified", hash: "e14c…88b6", time: "10:52" },
+  { id: "CR-8807", title: "GP visit summary", resident: "Henry Ashford", by: "Ella Morgan", updated: "3 hr ago", status: "Verified", hash: "77f2…2a10", time: "09:33" },
+  { id: "CR-8802", title: "End-of-life care review", resident: "Beatrice Coleman", by: "Priya Shah", updated: "5 hr ago", status: "Warning", hash: "b940…31de", time: "07:15" },
+];
+
+const tone = (s: string) =>
+  s === "Verified" ? ("success" as const) : s === "Pending" ? ("info" as const) : s === "Warning" ? ("warning" as const) : ("critical" as const);
+
+function CareRecordsPage() {
+  const [create, setCreate] = useState(false);
+  const [verify, setVerify] = useState<{ id: string; hash: string } | null>(null);
+  const [archive, setArchive] = useState<string | null>(null);
+
+  return (
+    <AppShell>
+      <SectionHeader
+        title="Care Records"
+        description="Immutable care documentation with SHA-256 integrity verification on every save."
+        action={
+          <button
+            onClick={() => setCreate(true)}
+            data-inspection-hide
+            className="inline-flex items-center gap-1.5 rounded-lg bg-primary px-3 py-2 text-xs font-semibold text-primary-foreground shadow-elegant hover:bg-primary/90"
+          >
+            <FileText className="h-3.5 w-3.5" /> New record
+          </button>
+        }
+      />
+
+      <div className="mb-4 grid gap-3 sm:grid-cols-4">
+        {[
+          { l: "Total records", v: "18,204" },
+          { l: "Verified today", v: "412" },
+          { l: "Pending review", v: "17" },
+          { l: "Failed integrity", v: "2", tone: "critical" as const },
+        ].map((s) => (
+          <Card key={s.l} className="p-4">
+            <p className="text-xs text-muted-foreground">{s.l}</p>
+            <p className={"mt-1 text-xl font-semibold " + (s.tone === "critical" ? "text-critical" : "text-foreground")}>{s.v}</p>
+          </Card>
+        ))}
+      </div>
+
+      <Card className="overflow-hidden">
+        <div className="overflow-x-auto">
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="border-b border-border bg-secondary/50 text-left text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
+                <th className="px-4 py-3">Record</th>
+                <th className="px-4 py-3">Resident</th>
+                <th className="px-4 py-3">Created by</th>
+                <th className="px-4 py-3">Last updated</th>
+                <th className="px-4 py-3">Hash</th>
+                <th className="px-4 py-3">Verified at</th>
+                <th className="px-4 py-3">Status</th>
+                <th className="px-4 py-3 text-right">Actions</th>
+              </tr>
+            </thead>
+            <tbody>
+              {records.map((r) => (
+                <tr key={r.id} className="border-b border-border last:border-0 hover:bg-secondary/40">
+                  <td className="px-4 py-3">
+                    <p className="font-medium text-foreground">{r.title}</p>
+                    <p className="text-xs text-muted-foreground">{r.id}</p>
+                  </td>
+                  <td className="px-4 py-3 text-muted-foreground">{r.resident}</td>
+                  <td className="px-4 py-3 text-muted-foreground">{r.by}</td>
+                  <td className="px-4 py-3 text-muted-foreground">{r.updated}</td>
+                  <td className="px-4 py-3">
+                    <code className="rounded bg-secondary px-1.5 py-0.5 text-[11px] font-mono">{r.hash}</code>
+                  </td>
+                  <td className="px-4 py-3 text-muted-foreground">{r.time}</td>
+                  <td className="px-4 py-3">
+                    <Badge tone={tone(r.status)}>
+                      <ShieldCheck className="h-3 w-3" /> {r.status}
+                    </Badge>
+                  </td>
+                  <td className="px-4 py-3">
+                    <div className="flex items-center justify-end gap-1">
+                      <button
+                        onClick={() => setVerify({ id: r.id, hash: fakeSha256(r.id) })}
+                        className="rounded-md p-1.5 text-muted-foreground hover:bg-secondary hover:text-foreground"
+                        title="Verify integrity"
+                      >
+                        <ShieldCheck className="h-4 w-4" />
+                      </button>
+                      <ReplayHistoryButton recordId={r.id} recordTitle={r.title} variant="icon" />
+                      <button className="rounded-md p-1.5 text-muted-foreground hover:bg-secondary hover:text-foreground" title="View">
+                        <Eye className="h-4 w-4" />
+                      </button>
+                      <button
+                        onClick={() => setArchive(r.title)}
+                        data-inspection-hide
+                        className="rounded-md p-1.5 text-muted-foreground hover:bg-secondary hover:text-foreground"
+                        title="Archive"
+                      >
+                        <MoreHorizontal className="h-4 w-4" />
+                      </button>
+                    </div>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </Card>
+
+      <FloatingActionButton onClick={() => setCreate(true)}>
+        <Plus className="h-4 w-4" /> New care record
+      </FloatingActionButton>
+
+      <CreateCareRecordModal open={create} onClose={() => setCreate(false)} />
+      <VerifyRecordDialog
+        open={!!verify}
+        onClose={() => setVerify(null)}
+        recordId={verify?.id ?? ""}
+        storedHash={verify?.hash ?? ""}
+      />
+      <ArchiveDialog open={!!archive} onClose={() => setArchive(null)} itemLabel={archive ?? ""} />
+    </AppShell>
+  );
+}

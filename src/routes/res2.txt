@@ -1,0 +1,321 @@
+import { createFileRoute, Link } from "@tanstack/react-router";
+import { useState } from "react";
+import { AppShell } from "@/components/app-shell";
+import { Card, SectionHeader, Badge } from "@/components/ui-kit";
+import {
+  Search,
+  Filter,
+  Plus,
+  MoreHorizontal,
+  ChevronLeft,
+  ChevronRight,
+  Eye,
+  Archive,
+} from "lucide-react";
+import { AddResidentModal, ArchiveDialog } from "@/components/modals";
+
+import { useResidents, useArchiveResident } from "@/hooks/use-residents";
+import { Resident } from "@/services";
+
+export const Route = createFileRoute("/residents copy")({
+  head: () => ({ meta: [{ title: "Residents — CareGuard" }] }),
+  component: ResidentsPage,
+});
+
+// const residents = [
+//   {
+//     name: "Margaret Ellis",
+//     age: 84,
+//     room: "204",
+//     caregiver: "James Owusu",
+//     admitted: "12 Mar 2023",
+//     status: "Stable",
+//     compliance: "Verified",
+//   },
+//   {
+//     name: "Arthur Whitfield",
+//     age: 79,
+//     room: "118",
+//     caregiver: "Priya Shah",
+//     admitted: "05 Jul 2026",
+//     status: "New admission",
+//     compliance: "Verified",
+//   },
+//   {
+//     name: "Beatrice Coleman",
+//     age: 88,
+//     room: "302",
+//     caregiver: "Ella Morgan",
+//     admitted: "22 Jan 2022",
+//     status: "Palliative",
+//     compliance: "Review due",
+//   },
+//   {
+//     name: "Henry Ashford",
+//     age: 76,
+//     room: "221",
+//     caregiver: "James Owusu",
+//     admitted: "18 Sep 2024",
+//     status: "Stable",
+//     compliance: "Verified",
+//   },
+//   {
+//     name: "Nora Blake",
+//     age: 91,
+//     room: "109",
+//     caregiver: "Priya Shah",
+//     admitted: "03 Feb 2021",
+//     status: "Requires review",
+//     compliance: "Alert",
+//   },
+//   {
+//     name: "Frank Doyle",
+//     age: 82,
+//     room: "215",
+//     caregiver: "Ella Morgan",
+//     admitted: "29 Nov 2023",
+//     status: "Stable",
+//     compliance: "Verified",
+//   },
+//   {
+//     name: "Iris Pemberton",
+//     age: 87,
+//     room: "301",
+//     caregiver: "James Owusu",
+//     admitted: "14 Apr 2022",
+//     status: "Stable",
+//     compliance: "Verified",
+//   },
+//   {
+//     name: "Walter Kingsley",
+//     age: 90,
+//     room: "106",
+//     caregiver: "Priya Shah",
+//     admitted: "08 Aug 2020",
+//     status: "Stable",
+//     compliance: "Verified",
+//   },
+// ];
+
+function toneFor(status: string) {
+  if (status === "Alert") return "critical" as const;
+  if (status === "Review due") return "warning" as const;
+  return "success" as const;
+}
+
+function ResidentsPage() {
+  const [addOpen, setAddOpen] = useState(false);
+  const [archive, setArchive] = useState<string | null>(null);
+  const [query, setQuery] = useState("");
+
+  const { data: residents = [], isLoading } = useResidents();
+
+  const archiveResident = useArchiveResident();
+
+  const filtered = residents.filter((resident: Resident) => {
+    const fullName = `${resident.firstName} ${resident.lastName}`.toLowerCase();
+    const caregiver = resident.primaryCaregiver
+      ? `${resident.primaryCaregiver.firstName} ${resident.primaryCaregiver.lastName}`.toLowerCase()
+      : "";
+
+    return (
+      !query ||
+      fullName.includes(query.toLowerCase()) ||
+      resident.roomNumber?.toLowerCase().includes(query.toLowerCase()) ||
+      caregiver.includes(query.toLowerCase())
+    );
+  });
+
+  // const filtered = residents.filter((resident) => {
+  //   const fullName = `${resident.firstName} ${resident.lastName}`.toLowerCase();
+
+  //   const caregiver = `${resident.primaryCaregiver?.firstName ?? ""} ${
+  //     resident.primaryCaregiver?.lastName ?? ""
+  //   }`.toLowerCase();
+
+  //   return (
+  //     !query ||
+  //     fullName.includes(query.toLowerCase()) ||
+  //     resident.roomNumber?.includes(query) ||
+  //     caregiver.includes(query.toLowerCase())
+  //   );
+  // });
+
+  // const filtered = residents.filter(
+  //   (r) =>
+  //     !query ||
+  //     r.name.toLowerCase().includes(query.toLowerCase()) ||
+  //     r.room.includes(query) ||
+  //     r.caregiver.toLowerCase().includes(query.toLowerCase()),
+  // );
+
+  return (
+    <AppShell>
+      <SectionHeader
+        title="Residents"
+        description="Manage resident records, review cycles and compliance status."
+        action={
+          <button
+            onClick={() => setAddOpen(true)}
+            data-inspection-hide
+            className="inline-flex items-center gap-1.5 rounded-lg bg-primary px-3 py-2 text-xs font-semibold text-primary-foreground shadow-elegant hover:bg-primary/90"
+          >
+            <Plus className="h-3.5 w-3.5" /> Add resident
+          </button>
+        }
+      />
+
+      <Card className="overflow-hidden">
+        <div className="flex flex-wrap items-center gap-2 border-b border-border p-4">
+          <div className="relative flex-1 min-w-[220px] max-w-md">
+            <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+            <input
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              placeholder="Search by name, room or caregiver"
+              className="h-9 w-full rounded-lg border border-border bg-secondary pl-9 pr-3 text-sm outline-none focus:border-ring focus:bg-card focus:ring-2 focus:ring-ring/20"
+            />
+          </div>
+          {["All", "Stable", "Palliative", "Review due", "Alerts"].map((f, i) => (
+            <button
+              key={f}
+              className={
+                "rounded-full border px-3 py-1.5 text-xs font-medium " +
+                (i === 0
+                  ? "border-primary bg-primary-soft text-primary"
+                  : "border-border bg-card text-muted-foreground hover:text-foreground")
+              }
+            >
+              {f}
+            </button>
+          ))}
+          <button className="ml-auto inline-flex items-center gap-1.5 rounded-lg border border-border bg-card px-3 py-1.5 text-xs font-semibold hover:bg-secondary">
+            <Filter className="h-3.5 w-3.5" /> Filters
+          </button>
+        </div>
+
+        <div className="overflow-x-auto">
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="border-b border-border bg-secondary/50 text-left text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
+                <th className="px-4 py-3">Resident</th>
+                <th className="px-4 py-3">Age</th>
+                <th className="px-4 py-3">Room</th>
+                <th className="px-4 py-3">Primary caregiver</th>
+                <th className="px-4 py-3">Admitted</th>
+                <th className="px-4 py-3">Status</th>
+                <th className="px-4 py-3">Compliance</th>
+                <th className="px-4 py-3"></th>
+              </tr>
+            </thead>
+            <tbody>
+              {filtered.map((r: Resident) => {
+                const fullName = `${r.firstName} ${r.lastName}`;
+                const caregiverName = r.primaryCaregiver
+                  ? `${r.primaryCaregiver.firstName} ${r.primaryCaregiver.lastName}`
+                  : "Not assigned";
+
+                const age = new Date().getFullYear() - new Date(r.dateOfBirth).getFullYear();
+
+                return (
+                  <tr
+                    key={r.id}
+                    className="border-b border-border last:border-0 hover:bg-secondary/40"
+                  >
+                    <td className="px-4 py-3">
+                      <div className="flex items-center gap-3">
+                        <div className="grid h-9 w-9 place-items-center rounded-full bg-primary-soft text-xs font-semibold text-primary">
+                          {r.firstName[0]}
+                          {r.lastName[0]}
+                        </div>
+                        <div>
+                          <Link
+                            to="/residents/$id"
+                            params={{ id: r.id }}
+                            className="font-medium text-foreground hover:text-primary"
+                          >
+                            {fullName}
+                          </Link>
+                          <p className="text-xs text-muted-foreground">Room {r.roomNumber}</p>
+                        </div>
+                      </div>
+                    </td>
+                    <td className="px-4 py-3 text-muted-foreground">{age}</td>
+                    <td className="px-4 py-3 font-medium">{r.roomNumber || "—"}</td>
+                    <td className="px-4 py-3 text-muted-foreground">{caregiverName}</td>
+                    <td className="px-4 py-3 text-muted-foreground">
+                      {new Date(r.admissionDate).toLocaleDateString()}
+                    </td>
+                    <td className="px-4 py-3">
+                      <Badge tone="neutral">{r.status}</Badge>
+                    </td>
+                    <td className="px-4 py-3">
+                      <Badge tone="success">{r.condition.replace("_", " ")}</Badge>
+                    </td>
+
+                    <td className="px-4 py-3 text-right">
+                      <div className="flex items-center justify-end gap-1">
+                        <Link
+                          to="/residents/$id"
+                          params={{ id: r.id.toLowerCase().replace(/\s+/g, "-") }}
+                          className="rounded-md p-1.5 text-muted-foreground hover:bg-secondary hover:text-foreground"
+                        >
+                          <Eye className="h-4 w-4" />
+                        </Link>
+                        <button
+                          onClick={() => setArchive(r.id)}
+                          data-inspection-hide
+                          className="rounded-md p-1.5 text-muted-foreground hover:bg-secondary hover:text-foreground"
+                        >
+                          <Archive className="h-4 w-4" />
+                        </button>
+                        <button className="rounded-md p-1.5 text-muted-foreground hover:bg-secondary hover:text-foreground">
+                          <MoreHorizontal className="h-4 w-4" />
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                );
+              })}
+              {filtered.length === 0 && (
+                <tr>
+                  <td colSpan={8} className="px-4 py-12 text-center text-sm text-muted-foreground">
+                    No residents match your search.
+                  </td>
+                </tr>
+              )}
+            </tbody>
+          </table>
+        </div>
+
+        <div className="flex items-center justify-between border-t border-border p-4 text-xs text-muted-foreground">
+          <span>Showing 1–8 of 128 residents</span>
+          <div className="flex items-center gap-1">
+            <button className="grid h-7 w-7 place-items-center rounded-md border border-border hover:bg-secondary">
+              <ChevronLeft className="h-3.5 w-3.5" />
+            </button>
+            {[1, 2, 3, 4].map((p) => (
+              <button
+                key={p}
+                className={
+                  "h-7 w-7 rounded-md text-xs font-medium " +
+                  (p === 1
+                    ? "bg-primary text-primary-foreground"
+                    : "border border-border hover:bg-secondary")
+                }
+              >
+                {p}
+              </button>
+            ))}
+            <button className="grid h-7 w-7 place-items-center rounded-md border border-border hover:bg-secondary">
+              <ChevronRight className="h-3.5 w-3.5" />
+            </button>
+          </div>
+        </div>
+      </Card>
+
+      <AddResidentModal open={addOpen} onClose={() => setAddOpen(false)} />
+      <ArchiveDialog open={!!archive} onClose={() => setArchive(null)} itemLabel={archive ?? ""} />
+    </AppShell>
+  );
+}

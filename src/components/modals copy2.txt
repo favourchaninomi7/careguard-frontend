@@ -1,0 +1,1362 @@
+import { useEffect, useState, type ReactNode } from "react";
+import { toast } from "sonner";
+import {
+  ShieldCheck,
+  ShieldAlert,
+  Database,
+  FileCheck2,
+  ScrollText,
+  CheckCircle2,
+  Hash,
+  Loader2,
+  Sparkles,
+  AlertTriangle,
+  X,
+  FileDown,
+  Archive,
+  KeyRound,
+} from "lucide-react";
+import { Modal, Field, inputCls, textareaCls, BtnPrimary, BtnGhost } from "./modal";
+import { Badge, Card } from "./ui-kit";
+import { fakeSha256, shortHash } from "@/lib/hash";
+import { User, UserRole } from "@/services/user-service";
+import { useCreateUser, useUpdateUser } from "@/hooks/use-users";
+
+import { useForm } from "react-hook-form";
+import { zodResolver } from "@hookform/resolvers/zod";
+import { z } from "zod";
+
+import { useCaregivers, useCreateResident } from "@/hooks/use-residents";
+import { ResidentFormValues, residentschema } from "@/schemas";
+import { capitalizeFirst } from "@/lib/utils";
+
+/* -------------------------------------------------------------------------- */
+/* Hash-generation animation (shared by Care Record & Medication saves)       */
+/* -------------------------------------------------------------------------- */
+
+type HashStep = { label: string; icon: typeof Database };
+
+const SAVE_STEPS: HashStep[] = [
+  { label: "Saving record", icon: Database },
+  { label: "Generating SHA-256 hash", icon: Hash },
+  { label: "Creating audit log entry", icon: ScrollText },
+  { label: "Verifying integrity", icon: ShieldCheck },
+];
+
+export function HashSaveDialog({
+  open,
+  onClose,
+  title,
+  successLabel,
+  seed,
+}: {
+  open: boolean;
+  onClose: () => void;
+  title: string;
+  successLabel: string;
+  seed: string;
+}) {
+  const [step, setStep] = useState(0);
+  const [hash, setHash] = useState("");
+  const done = step >= SAVE_STEPS.length;
+
+  useEffect(() => {
+    if (!open) return;
+    setStep(0);
+    setHash(fakeSha256(seed));
+    let s = 0;
+    const iv = setInterval(() => {
+      s += 1;
+      setStep(s);
+      if (s > SAVE_STEPS.length) clearInterval(iv);
+    }, 650);
+    return () => clearInterval(iv);
+  }, [open, seed]);
+
+  useEffect(() => {
+    if (done) toast.success(successLabel);
+  }, [done, successLabel]);
+
+  return (
+    <Modal
+      open={open}
+      onClose={onClose}
+      title={title}
+      description="Cryptographic verification in progress"
+      size="md"
+      footer={
+        done ? (
+          <BtnPrimary onClick={onClose}>
+            <CheckCircle2 className="h-3.5 w-3.5" /> Done
+          </BtnPrimary>
+        ) : null
+      }
+    >
+      <ul className="space-y-3">
+        {SAVE_STEPS.map((s, i) => {
+          const Icon = s.icon;
+          const state = i < step ? "done" : i === step ? "active" : "idle";
+          return (
+            <li
+              key={s.label}
+              className={
+                "flex items-center gap-3 rounded-xl border p-3 transition " +
+                (state === "done"
+                  ? "border-success/30 bg-success-soft/50"
+                  : state === "active"
+                    ? "border-primary/40 bg-primary-soft"
+                    : "border-border bg-card")
+              }
+            >
+              <span
+                className={
+                  "grid h-9 w-9 place-items-center rounded-lg " +
+                  (state === "done"
+                    ? "bg-success text-success-foreground"
+                    : state === "active"
+                      ? "bg-primary text-primary-foreground"
+                      : "bg-secondary text-muted-foreground")
+                }
+              >
+                {state === "done" ? (
+                  <CheckCircle2 className="h-4 w-4" />
+                ) : state === "active" ? (
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                ) : (
+                  <Icon className="h-4 w-4" />
+                )}
+              </span>
+              <div className="min-w-0 flex-1">
+                <p className="text-sm font-medium">{s.label}</p>
+                <p className="text-xs text-muted-foreground">
+                  {state === "done" ? "Completed" : state === "active" ? "Processing…" : "Waiting"}
+                </p>
+              </div>
+              {state === "done" && i === 1 && (
+                <code className="rounded-md bg-secondary px-2 py-1 font-mono text-[11px]">
+                  {shortHash(hash)}
+                </code>
+              )}
+            </li>
+          );
+        })}
+      </ul>
+      {done && (
+        <div className="mt-4 rounded-xl border border-success/30 bg-success-soft p-4 text-center animate-in fade-in">
+          <div className="mx-auto grid h-12 w-12 place-items-center rounded-full bg-success text-success-foreground">
+            <CheckCircle2 className="h-6 w-6" />
+          </div>
+          <p className="mt-3 text-sm font-semibold text-success">{successLabel}</p>
+          <code className="mt-2 inline-block break-all rounded-md bg-card px-2 py-1 font-mono text-[11px]">
+            {hash}
+          </code>
+        </div>
+      )}
+    </Modal>
+  );
+}
+
+/* -------------------------------------------------------------------------- */
+/* Add Resident modal                                                          */
+/* -------------------------------------------------------------------------- */
+
+export function AddResidentModal({
+  open,
+  onClose,
+  onSaved,
+}: {
+  open: boolean;
+  onClose: () => void;
+  onSaved?: () => void;
+}) {
+  const [name, setName] = useState("");
+  const [busy, setBusy] = useState(false);
+
+  const { data: caregivers = [] } = useCaregivers();
+
+  console.log(caregivers);
+  const createResident = useCreateResident();
+
+  const {
+    register,
+    handleSubmit,
+    reset,
+    watch,
+    formState: { errors },
+  } = useForm<ResidentFormValues>({
+    resolver: zodResolver(residentschema),
+    defaultValues: {
+      careHomeId: "carehome-001", // replace with authenticated user's care home
+      admissionDate: new Date().toISOString().slice(0, 10),
+    },
+  });
+
+  const firstName = watch("firstName");
+
+  const onSubmit = async (values: ResidentFormValues) => {
+    try {
+      await createResident.mutateAsync(values);
+
+      toast.success("Resident added successfully");
+
+      reset();
+
+      onSaved?.();
+
+      onClose();
+    } catch (error: any) {
+      toast.error(error?.response?.data?.message ?? "Unable to create resident.");
+    }
+  };
+
+  // const submit = () => {
+  //   if (!name.trim()) {
+  //     toast.error("First & last name are required");
+  //     return;
+  //   }
+  //   setBusy(true);
+  //   setTimeout(() => {
+  //     setBusy(false);
+  //     toast.success("Resident added successfully");
+  //     setName("");
+  //     onSaved?.();
+  //     onClose();
+  //   }, 700);
+  // };
+
+  return (
+    <Modal
+      open={open}
+      onClose={onClose}
+      title="Add resident"
+      description="Register a new resident under Elmwood Grove Care Home."
+      size="lg"
+      footer={
+        <>
+          <BtnGhost onClick={onClose}>Cancel</BtnGhost>
+
+          <BtnPrimary onClick={handleSubmit(onSubmit)} loading={createResident.isPending}>
+            Save resident
+          </BtnPrimary>
+        </>
+      }
+    >
+      <div className="grid gap-4 sm:grid-cols-2">
+        {/* <div className="sm:col-span-2 flex items-center gap-4">
+          <div className="grid h-16 w-16 place-items-center rounded-full bg-primary-soft text-primary text-lg font-semibold">
+            {name ? name.trim()[0]?.toUpperCase() : "+"}
+          </div>
+          <button className="rounded-lg border border-dashed border-border px-3 py-2 text-xs font-semibold text-muted-foreground hover:bg-secondary">
+            Upload photo
+          </button>
+        </div> */}
+
+        <div className="grid h-16 w-16 place-items-center rounded-full bg-primary-soft text-primary text-lg font-semibold">
+          {firstName ? firstName[0].toUpperCase() : "+"}
+        </div>
+        <Field label="First name" required>
+          <input {...register("firstName")} className={inputCls} placeholder="Margaret" />
+
+          {errors.firstName && <p className="text-xs text-red-500">{errors.firstName.message}</p>}
+        </Field>
+
+        {/* <Field label="First name" required>
+          <input
+            className={inputCls}
+            placeholder="Margaret"
+            onChange={(e) => setName(e.target.value + " " + name.split(" ").slice(1).join(" "))}
+          />
+        </Field> */}
+        <Field label="Last name" required>
+          <input className={inputCls} placeholder="Ellis" />
+        </Field>
+
+        <Field label="Gender">
+          <select className={inputCls}>
+            <option>Female</option>
+            <option>Male</option>
+            <option>Non-binary</option>
+            <option>Prefer not to say</option>
+          </select>
+        </Field>
+        <Field label="Date of birth" required>
+          <input type="date" className={inputCls} />
+        </Field>
+        <Field label="Room number" required>
+          <input className={inputCls} placeholder="e.g. 204" />
+        </Field>
+        <Field label="Admission date" required>
+          <input
+            type="date"
+            className={inputCls}
+            defaultValue={new Date().toISOString().slice(0, 10)}
+          />
+        </Field>
+        {/* <Field label="Primary caregiver">
+          <select className={inputCls}>
+            <option>James Owusu</option>
+            <option>Priya Shah</option>
+            <option>Ella Morgan</option>
+          </select>
+        </Field> */}
+
+        <Field label="Primary caregiver" required>
+          <select {...register("primaryCaregiverId")} className={inputCls}>
+            <option value="">Select caregiver</option>
+
+            {caregivers.map((caregiver: any) => (
+              <option key={caregiver.id} value={caregiver.id}>
+                {capitalizeFirst(`${caregiver.firstName} ${caregiver.lastName}`)}
+              </option>
+            ))}
+          </select>
+        </Field>
+        <Field label="Current status">
+          <select className={inputCls}>
+            <option>Stable</option>
+            <option>New admission</option>
+            <option>Palliative</option>
+            <option>Requires review</option>
+          </select>
+        </Field>
+        <Field label="Emergency contact" span={2} hint="Name, relationship, phone">
+          <input className={inputCls} placeholder="Susan Ellis (daughter) · 07700 900123" />
+        </Field>
+        <Field label="Medical conditions" span={2}>
+          <textarea className={textareaCls} placeholder="Hypertension, Type 2 diabetes…" />
+        </Field>
+        <Field label="Allergies" span={2}>
+          <input className={inputCls} placeholder="Penicillin, latex" />
+        </Field>
+        <Field label="Notes" span={2}>
+          <textarea className={textareaCls} placeholder="Additional care notes…" />
+        </Field>
+      </div>
+    </Modal>
+  );
+}
+
+/* -------------------------------------------------------------------------- */
+/* Add / Edit User modal                                                       */
+/* -------------------------------------------------------------------------- */
+
+export function UserModal({
+  open,
+  onClose,
+  user,
+}: {
+  open: boolean;
+  onClose: () => void;
+  user?: User;
+}) {
+  const createUser = useCreateUser();
+  const updateUser = useUpdateUser();
+
+  const busy = createUser.isPending || updateUser.isPending;
+
+  const [firstName, setFirstName] = useState(user?.firstName ?? "");
+  const [lastName, setLastName] = useState(user?.lastName ?? "");
+  const [email, setEmail] = useState(user?.email ?? "");
+  const [role, setRole] = useState<UserRole>(user?.role ?? UserRole.MANAGER);
+  const [password, setPassword] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
+  const [isActive, setIsActive] = useState(user?.isActive ?? true);
+
+  useEffect(() => {
+    if (user) {
+      setFirstName(user.firstName);
+      setLastName(user.lastName);
+      setRole(user.role);
+      setIsActive(user.isActive ?? true);
+    }
+  }, [user]);
+
+  // const [busy, setBusy] = useState(false);
+  const editing = !!user;
+
+  const passwordsMatch =
+    password.length > 0 && confirmPassword.length > 0 && password === confirmPassword;
+
+  const submit = async () => {
+    if (!editing) {
+      if (password !== confirmPassword) {
+        toast.error("Passwords do not match");
+        return;
+      }
+    }
+
+    const payload = {
+      firstName,
+      lastName,
+      role,
+    };
+
+    try {
+      if (editing) {
+        await updateUser.mutateAsync({
+          id: user.id,
+          data: {
+            ...payload,
+            isActive: isActive,
+          },
+        });
+
+        toast.success("User updated");
+      } else {
+        await createUser.mutateAsync({
+          ...payload,
+          email,
+          password,
+        });
+
+        toast.success("User created — invitation sent");
+      }
+
+      onClose();
+    } catch (err) {
+      toast.error("Something went wrong");
+    }
+  };
+
+  // const submit = () => {
+  //   setBusy(true);
+  //   setTimeout(() => {
+  //     setBusy(false);
+  //     toast.success(editing ? "User updated" : "User created — invitation sent");
+  //     onClose();
+  //   }, 600);
+  // };
+
+  return (
+    <Modal
+      open={open}
+      onClose={onClose}
+      title={editing ? "Edit user" : "Invite user"}
+      description={editing ? "Update role, contact and access." : "Create a new staff account."}
+      size="lg"
+      footer={
+        <>
+          <BtnGhost onClick={onClose}>Cancel</BtnGhost>
+          <BtnPrimary onClick={submit} loading={busy}>
+            {editing ? "Save changes" : "Create user"}
+          </BtnPrimary>
+        </>
+      }
+    >
+      <div className="grid gap-4 sm:grid-cols-2">
+        {/* <div className="sm:col-span-2 flex items-center gap-4">
+          <div className="grid h-14 w-14 place-items-center rounded-full bg-primary text-primary-foreground text-base font-semibold">
+            {user ? user.name.split(" ").map((n) => n[0]).join("") : "NU"}
+          </div>
+          <button className="rounded-lg border border-dashed border-border px-3 py-2 text-xs font-semibold text-muted-foreground hover:bg-secondary">
+            Upload avatar
+          </button>
+        </div> */}
+        <Field label="First name" required>
+          <input
+            className={inputCls}
+            defaultValue={user?.firstName.split(" ")[0]}
+            onChange={(e) => setFirstName(e.target.value)}
+          />
+        </Field>
+        <Field label="Last name" required>
+          <input
+            className={inputCls}
+            defaultValue={user?.lastName}
+            onChange={(e) => setLastName(e.target.value)}
+          />
+        </Field>
+        {/* <Field label="Email" required span={2}> */}
+        {!editing && (
+          <Field label="Email" required>
+            <input
+              type="email"
+              className={inputCls}
+              // defaultValue={user?.email}
+              onChange={(e) => setEmail(e.target.value)}
+            />
+          </Field>
+        )}
+
+        <Field label="Role" required>
+          <select
+            className={inputCls}
+            defaultValue={user?.role ?? UserRole.MANAGER}
+            onChange={(e) => setRole(e.target.value as UserRole)}
+          >
+            <option value={UserRole.MANAGER}>Home Manager</option>
+            <option value={UserRole.CARE_STAFF}>Care Staff</option>
+            <option value={UserRole.COMPLIANCE_OFFICER}>Compliance Officer</option>
+            <option value={UserRole.ADMINISTRATOR}>Administrator</option>
+            <option value={UserRole.INSPECTOR}>Inspector</option>
+          </select>
+        </Field>
+        {!editing && (
+          <>
+            <Field label="Password" required>
+              <input
+                type="password"
+                className={inputCls}
+                onChange={(e) => setPassword(e.target.value)}
+              />
+            </Field>
+            <Field label="Confirm password" required>
+              <input
+                type="password"
+                className={inputCls}
+                onChange={(e) => setConfirmPassword(e.target.value)}
+              />
+              {confirmPassword && !passwordsMatch && (
+                <p className="mt-1 text-sm text-red-600">Passwords do not match.</p>
+              )}
+            </Field>
+          </>
+        )}
+
+        {editing && (
+          <Field label="Status" span={2}>
+            <select
+              className={inputCls}
+              defaultValue={user?.isActive ? "Active" : "Suspended"}
+              onChange={(e) => setIsActive(e.target.value == "Active")}
+            >
+              <option value="Active">Active</option>
+              <option value="Suspended">Suspended</option>
+            </select>
+          </Field>
+        )}
+      </div>
+    </Modal>
+  );
+}
+
+/* -------------------------------------------------------------------------- */
+/* Create Care Record modal (opens HashSaveDialog on submit)                   */
+/* -------------------------------------------------------------------------- */
+
+export function CreateCareRecordModal({ open, onClose }: { open: boolean; onClose: () => void }) {
+  const [saving, setSaving] = useState(false);
+  const [seed, setSeed] = useState("");
+  const [title, setTitle] = useState("");
+
+  const submit = () => {
+    if (!title.trim()) {
+      toast.error("Record title is required");
+      return;
+    }
+    setSeed(title + Date.now());
+    setSaving(true);
+  };
+
+  return (
+    <>
+      <Modal
+        open={open && !saving}
+        onClose={onClose}
+        title="New care record"
+        description="Every save is hashed with SHA-256 and written to the immutable audit ledger."
+        size="lg"
+        footer={
+          <>
+            <BtnGhost onClick={onClose}>Cancel</BtnGhost>
+            <BtnPrimary onClick={submit}>
+              <ShieldCheck className="h-3.5 w-3.5" /> Save & verify
+            </BtnPrimary>
+          </>
+        }
+      >
+        <div className="grid gap-4 sm:grid-cols-2">
+          <Field label="Resident" required>
+            <select className={inputCls}>
+              <option>Margaret Ellis · Room 204</option>
+              <option>Arthur Whitfield · Room 118</option>
+              <option>Beatrice Coleman · Room 302</option>
+              <option>Nora Blake · Room 109</option>
+              <option>Frank Doyle · Room 215</option>
+            </select>
+          </Field>
+          <Field label="Care category" required>
+            <select className={inputCls}>
+              <option>Daily care plan</option>
+              <option>Fall risk assessment</option>
+              <option>Nutrition & hydration</option>
+              <option>Behavioural observation</option>
+              <option>Wound care</option>
+              <option>End-of-life care review</option>
+            </select>
+          </Field>
+          <Field label="Record title" required span={2}>
+            <input
+              className={inputCls}
+              placeholder="e.g. Morning routine and mobility check"
+              value={title}
+              onChange={(e) => setTitle(e.target.value)}
+            />
+          </Field>
+          <Field label="Priority">
+            <select className={inputCls}>
+              <option>Routine</option>
+              <option>Elevated</option>
+              <option>Urgent</option>
+            </select>
+          </Field>
+          <Field label="Record date" required>
+            <input
+              type="datetime-local"
+              className={inputCls}
+              defaultValue={new Date().toISOString().slice(0, 16)}
+            />
+          </Field>
+          <Field label="Vital signs" span={2} hint="BP, HR, temperature, SpO₂">
+            <input className={inputCls} placeholder="128/82 mmHg · 72 bpm · 36.6°C · 97%" />
+          </Field>
+          <Field label="Observation notes" required span={2}>
+            <textarea className={textareaCls} placeholder="Detailed clinical observation…" />
+          </Field>
+          <Field label="Care plan" span={2}>
+            <textarea
+              className={textareaCls}
+              placeholder="Recommended interventions and follow-up…"
+            />
+          </Field>
+          <Field label="Attachments" span={2}>
+            <button className="flex h-24 w-full items-center justify-center rounded-xl border border-dashed border-border text-xs font-semibold text-muted-foreground hover:bg-secondary/50">
+              Drop files or click to upload
+            </button>
+          </Field>
+        </div>
+      </Modal>
+
+      <HashSaveDialog
+        open={saving}
+        onClose={() => {
+          setSaving(false);
+          setTitle("");
+          onClose();
+        }}
+        title="Saving care record"
+        successLabel="Care record saved & verified"
+        seed={seed}
+      />
+    </>
+  );
+}
+
+/* -------------------------------------------------------------------------- */
+/* Record Medication modal                                                     */
+/* -------------------------------------------------------------------------- */
+
+export function RecordMedicationModal({ open, onClose }: { open: boolean; onClose: () => void }) {
+  const [saving, setSaving] = useState(false);
+  const [seed, setSeed] = useState("");
+  const [med, setMed] = useState("");
+
+  const submit = () => {
+    if (!med.trim()) {
+      toast.error("Medication name is required");
+      return;
+    }
+    setSeed(med + Date.now());
+    setSaving(true);
+  };
+
+  return (
+    <>
+      <Modal
+        open={open && !saving}
+        onClose={onClose}
+        title="Record medication"
+        description="Sign for a medication administration — hashed and logged in real time."
+        size="lg"
+        footer={
+          <>
+            <BtnGhost onClick={onClose}>Cancel</BtnGhost>
+            <BtnPrimary onClick={submit}>
+              <ShieldCheck className="h-3.5 w-3.5" /> Sign & save
+            </BtnPrimary>
+          </>
+        }
+      >
+        <div className="grid gap-4 sm:grid-cols-2">
+          <Field label="Resident" required>
+            <select className={inputCls}>
+              <option>Margaret Ellis · Room 204</option>
+              <option>Arthur Whitfield · Room 118</option>
+              <option>Beatrice Coleman · Room 302</option>
+              <option>Nora Blake · Room 109</option>
+              <option>Frank Doyle · Room 215</option>
+            </select>
+          </Field>
+          <Field label="Medication name" required>
+            <input
+              className={inputCls}
+              placeholder="e.g. Ramipril"
+              value={med}
+              onChange={(e) => setMed(e.target.value)}
+            />
+          </Field>
+          <Field label="Dosage" required>
+            <input className={inputCls} placeholder="5mg" />
+          </Field>
+          <Field label="Route" required>
+            <select className={inputCls}>
+              <option>Oral</option>
+              <option>Sublingual</option>
+              <option>Subcutaneous (SC)</option>
+              <option>Intramuscular (IM)</option>
+              <option>Topical</option>
+              <option>Inhalation</option>
+            </select>
+          </Field>
+          <Field label="Administration time" required>
+            <input
+              type="datetime-local"
+              className={inputCls}
+              defaultValue={new Date().toISOString().slice(0, 16)}
+            />
+          </Field>
+          <Field label="Administered by" required>
+            <select className={inputCls}>
+              <option>Ella Morgan</option>
+              <option>James Owusu</option>
+              <option>Priya Shah</option>
+            </select>
+          </Field>
+          <Field label="Status" required>
+            <select className={inputCls}>
+              <option>Administered</option>
+              <option>Refused</option>
+              <option>Withheld (clinical reason)</option>
+              <option>Missed</option>
+            </select>
+          </Field>
+          <Field label="Notes" span={2}>
+            <textarea
+              className={textareaCls}
+              placeholder="Observation, side effects, reason if refused…"
+            />
+          </Field>
+        </div>
+      </Modal>
+
+      <HashSaveDialog
+        open={saving}
+        onClose={() => {
+          setSaving(false);
+          setMed("");
+          onClose();
+        }}
+        title="Recording medication"
+        successLabel="Medication successfully verified"
+        seed={seed}
+      />
+    </>
+  );
+}
+
+/* -------------------------------------------------------------------------- */
+/* Archive confirmation                                                        */
+/* -------------------------------------------------------------------------- */
+
+export function ArchiveDialog({
+  open,
+  onClose,
+  itemLabel,
+}: {
+  open: boolean;
+  onClose: () => void;
+  itemLabel: string;
+}) {
+  const [busy, setBusy] = useState(false);
+  const submit = () => {
+    setBusy(true);
+    setTimeout(() => {
+      setBusy(false);
+      toast.success("Record archived — audit trail preserved");
+      onClose();
+    }, 500);
+  };
+  return (
+    <Modal
+      open={open}
+      onClose={onClose}
+      title="Archive record"
+      description="Records are never permanently deleted."
+      size="sm"
+      footer={
+        <>
+          <BtnGhost onClick={onClose}>Cancel</BtnGhost>
+          <button
+            onClick={submit}
+            disabled={busy}
+            className="inline-flex items-center gap-1.5 rounded-lg bg-critical px-3.5 py-2 text-xs font-semibold text-critical-foreground hover:bg-critical/90 disabled:opacity-60"
+          >
+            {busy ? (
+              <span className="h-3 w-3 animate-spin rounded-full border-2 border-critical-foreground/40 border-t-critical-foreground" />
+            ) : (
+              <Archive className="h-3.5 w-3.5" />
+            )}
+            Archive
+          </button>
+        </>
+      }
+    >
+      <div className="rounded-xl border border-warning/40 bg-warning-soft p-4">
+        <div className="flex items-start gap-2">
+          <AlertTriangle className="mt-0.5 h-4 w-4 text-warning-foreground" />
+          <div>
+            <p className="text-sm font-semibold text-warning-foreground">
+              This record will be archived rather than permanently deleted.
+            </p>
+            <p className="mt-1 text-xs text-muted-foreground">
+              CQC and GDPR retention rules require an immutable trail. "{itemLabel}" will be hidden
+              from active views but remains readable in the audit ledger.
+            </p>
+          </div>
+        </div>
+      </div>
+    </Modal>
+  );
+}
+
+/* -------------------------------------------------------------------------- */
+/* Generate report                                                             */
+/* -------------------------------------------------------------------------- */
+
+export function GenerateReportModal({ open, onClose }: { open: boolean; onClose: () => void }) {
+  const [busy, setBusy] = useState(false);
+  const submit = () => {
+    setBusy(true);
+    setTimeout(() => {
+      setBusy(false);
+      toast.success("Compliance report generated");
+      onClose();
+    }, 900);
+  };
+
+  return (
+    <Modal
+      open={open}
+      onClose={onClose}
+      title="Generate compliance report"
+      description="Assemble a CQC-ready export from the last verification window."
+      size="lg"
+      footer={
+        <>
+          <BtnGhost onClick={onClose}>Cancel</BtnGhost>
+          <BtnPrimary onClick={submit} loading={busy}>
+            <FileDown className="h-3.5 w-3.5" /> Generate report
+          </BtnPrimary>
+        </>
+      }
+    >
+      <div className="grid gap-4 sm:grid-cols-2">
+        <Field label="Report period" required>
+          <select className={inputCls}>
+            <option>Today</option>
+            <option>This week</option>
+            <option>This month</option>
+            <option>Custom range</option>
+          </select>
+        </Field>
+        <Field label="Export format" required>
+          <select className={inputCls}>
+            <option>PDF</option>
+            <option>CSV</option>
+            <option>Print</option>
+          </select>
+        </Field>
+        <Field label="From">
+          <input type="date" className={inputCls} />
+        </Field>
+        <Field label="To">
+          <input
+            type="date"
+            className={inputCls}
+            defaultValue={new Date().toISOString().slice(0, 10)}
+          />
+        </Field>
+        <div className="sm:col-span-2">
+          <p className="mb-2 text-xs font-semibold">Include sections</p>
+          <div className="grid gap-2 sm:grid-cols-2">
+            {[
+              "Residents",
+              "Medication",
+              "Audit logs",
+              "Integrity results",
+              "CQC key questions",
+              "Staff & training",
+            ].map((s) => (
+              <label
+                key={s}
+                className="flex items-center gap-2 rounded-lg border border-border p-2.5 text-sm"
+              >
+                <input type="checkbox" defaultChecked className="h-4 w-4 accent-primary" />
+                {s}
+              </label>
+            ))}
+          </div>
+        </div>
+      </div>
+    </Modal>
+  );
+}
+
+/* -------------------------------------------------------------------------- */
+/* Verify Record dialog (per-record integrity check)                           */
+/* -------------------------------------------------------------------------- */
+
+export function VerifyRecordDialog({
+  open,
+  onClose,
+  recordId,
+  storedHash,
+}: {
+  open: boolean;
+  onClose: () => void;
+  recordId: string;
+  storedHash: string;
+}) {
+  const [phase, setPhase] = useState<"checking" | "match" | "mismatch">("checking");
+  useEffect(() => {
+    if (!open) return;
+    setPhase("checking");
+    const t = setTimeout(() => setPhase("match"), 1200);
+    return () => clearTimeout(t);
+  }, [open, recordId]);
+
+  return (
+    <Modal
+      open={open}
+      onClose={onClose}
+      title="Verify record integrity"
+      description={`Recomputing SHA-256 for ${recordId}`}
+      size="md"
+      footer={phase !== "checking" ? <BtnPrimary onClick={onClose}>Close</BtnPrimary> : null}
+    >
+      {phase === "checking" ? (
+        <div className="flex flex-col items-center gap-3 py-6">
+          <Loader2 className="h-10 w-10 animate-spin text-primary" />
+          <p className="text-sm font-medium">Recomputing hash from raw record…</p>
+          <p className="text-xs text-muted-foreground">Comparing with stored ledger entry.</p>
+        </div>
+      ) : (
+        <div className="space-y-4">
+          <div className="grid gap-2 rounded-xl border border-success/30 bg-success-soft p-4 text-center animate-in fade-in">
+            <div className="mx-auto grid h-14 w-14 place-items-center rounded-full bg-success text-success-foreground">
+              <ShieldCheck className="h-7 w-7" />
+            </div>
+            <p className="text-sm font-semibold text-success">Integrity verified</p>
+            <p className="text-xs text-muted-foreground">
+              Computed hash matches the stored ledger entry byte-for-byte.
+            </p>
+          </div>
+          <div className="rounded-xl border border-border p-3 text-xs">
+            <div className="flex items-center justify-between py-1">
+              <span className="text-muted-foreground">Stored hash</span>
+              <code className="font-mono">{shortHash(storedHash)}</code>
+            </div>
+            <div className="flex items-center justify-between py-1">
+              <span className="text-muted-foreground">Computed hash</span>
+              <code className="font-mono">{shortHash(storedHash)}</code>
+            </div>
+            <div className="flex items-center justify-between py-1">
+              <span className="text-muted-foreground">Verified at</span>
+              <span>{new Date().toLocaleString("en-GB")}</span>
+            </div>
+            <div className="flex items-center justify-between py-1">
+              <span className="text-muted-foreground">Result</span>
+              <Badge tone="success">Verified</Badge>
+            </div>
+          </div>
+        </div>
+      )}
+    </Modal>
+  );
+}
+
+/* -------------------------------------------------------------------------- */
+/* Reset Password confirm                                                      */
+/* -------------------------------------------------------------------------- */
+
+export function ResetPasswordDialog({
+  open,
+  onClose,
+  userLabel,
+}: {
+  open: boolean;
+  onClose: () => void;
+  userLabel: string;
+}) {
+  const [busy, setBusy] = useState(false);
+  const submit = () => {
+    setBusy(true);
+    setTimeout(() => {
+      setBusy(false);
+      toast.success("Password reset email sent");
+      onClose();
+    }, 600);
+  };
+  return (
+    <Modal
+      open={open}
+      onClose={onClose}
+      title="Reset password"
+      size="sm"
+      footer={
+        <>
+          <BtnGhost onClick={onClose}>Cancel</BtnGhost>
+          <BtnPrimary onClick={submit} loading={busy}>
+            <KeyRound className="h-3.5 w-3.5" /> Send reset link
+          </BtnPrimary>
+        </>
+      }
+    >
+      <p className="text-sm">
+        Send a password reset email to <span className="font-semibold">{userLabel}</span>? The
+        current password will remain valid until the link is used.
+      </p>
+    </Modal>
+  );
+}
+
+/* -------------------------------------------------------------------------- */
+/* Verify All — full-screen experience                                         */
+/* -------------------------------------------------------------------------- */
+
+const VERIFY_STAGES: { label: string; icon: typeof Database; blurb: string }[] = [
+  {
+    label: "Scanning database",
+    icon: Database,
+    blurb: "Enumerating care records, medication logs and audit entries",
+  },
+  { label: "Calculating SHA-256 hashes", icon: Hash, blurb: "Rehashing raw record payloads" },
+  {
+    label: "Comparing stored hashes",
+    icon: ShieldCheck,
+    blurb: "Byte-for-byte match against the immutable ledger",
+  },
+  {
+    label: "Generating compliance report",
+    icon: FileCheck2,
+    blurb: "Assembling verification digest",
+  },
+];
+
+const TOTAL_RECORDS = 18204;
+
+export function VerifyAllExperience({ open, onClose }: { open: boolean; onClose: () => void }) {
+  const [stage, setStage] = useState(0);
+  const [verified, setVerified] = useState(0);
+  const [current, setCurrent] = useState("CR-00001");
+  const [done, setDone] = useState(false);
+  const [startedAt, setStartedAt] = useState(0);
+  const [elapsed, setElapsed] = useState(0);
+
+  useEffect(() => {
+    if (!open) return;
+    setStage(0);
+    setVerified(0);
+    setDone(false);
+    setStartedAt(Date.now());
+    setElapsed(0);
+  }, [open]);
+
+  useEffect(() => {
+    if (!open || done) return;
+    const stageDurations = [900, 3200, 1400, 900];
+    const t = setTimeout(() => {
+      if (stage < VERIFY_STAGES.length - 1) setStage(stage + 1);
+      else {
+        setDone(true);
+        setElapsed((Date.now() - startedAt) / 1000);
+        toast.success("Integrity verification complete");
+      }
+    }, stageDurations[stage]);
+    return () => clearTimeout(t);
+  }, [open, stage, done, startedAt]);
+
+  useEffect(() => {
+    if (!open || stage !== 1) return;
+    const iv = setInterval(() => {
+      setVerified((v) => {
+        const next = Math.min(TOTAL_RECORDS, v + Math.floor(TOTAL_RECORDS / 40));
+        setCurrent("CR-" + String(8800 + Math.floor(Math.random() * 40)).padStart(5, "0"));
+        return next;
+      });
+    }, 80);
+    return () => clearInterval(iv);
+  }, [open, stage]);
+
+  useEffect(() => {
+    if (done) setVerified(TOTAL_RECORDS);
+  }, [done]);
+
+  if (!open) return null;
+
+  return (
+    <div className="fixed inset-0 z-50 flex flex-col bg-background animate-in fade-in">
+      <div className="flex items-center justify-between border-b border-border bg-card px-6 py-4">
+        <div className="flex items-center gap-2">
+          <div className="grid h-9 w-9 place-items-center rounded-lg bg-primary text-primary-foreground">
+            <ShieldCheck className="h-5 w-5" />
+          </div>
+          <div>
+            <p className="text-sm font-semibold">Integrity verification</p>
+            <p className="text-xs text-muted-foreground">
+              {done ? "Verification complete" : "Running cryptographic sweep across all records"}
+            </p>
+          </div>
+        </div>
+        <button
+          onClick={onClose}
+          className="rounded-md p-2 text-muted-foreground hover:bg-secondary hover:text-foreground"
+          aria-label="Close"
+        >
+          <X className="h-4 w-4" />
+        </button>
+      </div>
+
+      <div className="flex-1 overflow-y-auto px-4 py-6 md:px-8 md:py-10">
+        {!done ? (
+          <VerifyingView stage={stage} verified={verified} current={current} />
+        ) : (
+          <VerifyResultsView elapsed={elapsed} />
+        )}
+      </div>
+
+      {done && (
+        <div className="flex items-center justify-end gap-2 border-t border-border bg-secondary/40 px-6 py-3">
+          <BtnGhost onClick={onClose}>Close</BtnGhost>
+          <BtnPrimary onClick={onClose}>
+            <FileDown className="h-3.5 w-3.5" /> Download report
+          </BtnPrimary>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function VerifyingView({
+  stage,
+  verified,
+  current,
+}: {
+  stage: number;
+  verified: number;
+  current: string;
+}) {
+  const remaining = TOTAL_RECORDS - verified;
+  const pct = Math.round((verified / TOTAL_RECORDS) * 100);
+
+  return (
+    <div className="mx-auto max-w-3xl">
+      <Card className="p-8">
+        <p className="text-xs font-semibold uppercase tracking-wider text-primary">
+          Stage {stage + 1} of {VERIFY_STAGES.length}
+        </p>
+        <h2 className="mt-1 text-2xl font-semibold">{VERIFY_STAGES[stage].label}…</h2>
+        <p className="mt-1 text-sm text-muted-foreground">{VERIFY_STAGES[stage].blurb}</p>
+
+        <div className="mt-6 h-2 overflow-hidden rounded-full bg-secondary">
+          <div
+            className="h-full rounded-full bg-primary transition-all duration-200"
+            style={{ width: `${stage === 1 ? pct : ((stage + 1) / VERIFY_STAGES.length) * 100}%` }}
+          />
+        </div>
+
+        {stage === 1 && (
+          <div className="mt-6 grid gap-3 sm:grid-cols-3">
+            <Card className="p-4">
+              <p className="text-xs text-muted-foreground">Records verified</p>
+              <p className="mt-1 text-2xl font-semibold tabular-nums">
+                {verified.toLocaleString()}
+              </p>
+            </Card>
+            <Card className="p-4">
+              <p className="text-xs text-muted-foreground">Records remaining</p>
+              <p className="mt-1 text-2xl font-semibold tabular-nums">
+                {remaining.toLocaleString()}
+              </p>
+            </Card>
+            <Card className="p-4">
+              <p className="text-xs text-muted-foreground">Current record</p>
+              <p className="mt-1 font-mono text-xl font-semibold">{current}</p>
+            </Card>
+          </div>
+        )}
+
+        <ul className="mt-8 space-y-2">
+          {VERIFY_STAGES.map((s, i) => {
+            const Icon = s.icon;
+            const state = i < stage ? "done" : i === stage ? "active" : "idle";
+            return (
+              <li
+                key={s.label}
+                className={
+                  "flex items-center gap-3 rounded-xl border p-3 " +
+                  (state === "done"
+                    ? "border-success/30 bg-success-soft/50"
+                    : state === "active"
+                      ? "border-primary/40 bg-primary-soft"
+                      : "border-border")
+                }
+              >
+                <span
+                  className={
+                    "grid h-8 w-8 place-items-center rounded-lg " +
+                    (state === "done"
+                      ? "bg-success text-success-foreground"
+                      : state === "active"
+                        ? "bg-primary text-primary-foreground"
+                        : "bg-secondary text-muted-foreground")
+                  }
+                >
+                  {state === "done" ? (
+                    <CheckCircle2 className="h-4 w-4" />
+                  ) : state === "active" ? (
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                  ) : (
+                    <Icon className="h-4 w-4" />
+                  )}
+                </span>
+                <span className="text-sm font-medium">{s.label}</span>
+              </li>
+            );
+          })}
+        </ul>
+      </Card>
+    </div>
+  );
+}
+
+function VerifyResultsView({ elapsed }: { elapsed: number }) {
+  const cards = [
+    {
+      l: "Total records",
+      v: TOTAL_RECORDS.toLocaleString(),
+      tone: "info" as const,
+      icon: Database,
+    },
+    {
+      l: "Verified records",
+      v: TOTAL_RECORDS.toLocaleString(),
+      tone: "success" as const,
+      icon: ShieldCheck,
+    },
+    { l: "Modified records", v: "0", tone: "warning" as const, icon: ShieldAlert },
+    { l: "Compliance score", v: "100%", tone: "success" as const, icon: Sparkles },
+  ];
+  const toneBg: Record<string, string> = {
+    info: "bg-primary-soft text-primary",
+    success: "bg-success-soft text-success",
+    warning: "bg-warning-soft text-warning-foreground",
+    critical: "bg-critical-soft text-critical",
+  };
+
+  const rows = [
+    { id: "CR-8834", resident: "Margaret Ellis", status: "Verified", time: "just now" },
+    { id: "CR-8833", resident: "Arthur Whitfield", status: "Verified", time: "just now" },
+    { id: "CR-8832", resident: "Beatrice Coleman", status: "Verified", time: "just now" },
+    { id: "MED-4401", resident: "Frank Doyle", status: "Verified", time: "just now" },
+    { id: "CR-8815", resident: "Frank Doyle", status: "Verified", time: "just now" },
+    { id: "CR-8807", resident: "Henry Ashford", status: "Verified", time: "just now" },
+  ];
+
+  return (
+    <div className="mx-auto max-w-5xl space-y-6">
+      <Card className="p-8 text-center animate-in fade-in">
+        <div className="mx-auto grid h-20 w-20 place-items-center rounded-full bg-success text-success-foreground shadow-elegant">
+          <ShieldCheck className="h-10 w-10" />
+        </div>
+        <h2 className="mt-4 text-2xl font-semibold">Verification complete</h2>
+        <p className="mx-auto mt-2 max-w-xl text-sm text-muted-foreground">
+          All resident records successfully passed integrity verification. No unauthorized
+          modifications were detected across care records, medication logs and audit entries.
+        </p>
+        <div className="mt-4 inline-flex items-center gap-2 rounded-full border border-success/30 bg-success-soft px-4 py-1.5 text-xs font-semibold text-success">
+          <Sparkles className="h-3.5 w-3.5" /> 100% compliance · CQC-ready
+        </div>
+      </Card>
+
+      <div className="grid gap-3 md:grid-cols-4">
+        {cards.map((c) => {
+          const Icon = c.icon;
+          return (
+            <Card key={c.l} className="p-4">
+              <div className={"grid h-10 w-10 place-items-center rounded-lg " + toneBg[c.tone]}>
+                <Icon className="h-5 w-5" />
+              </div>
+              <p className="mt-3 text-xs text-muted-foreground">{c.l}</p>
+              <p className="text-2xl font-semibold">{c.v}</p>
+            </Card>
+          );
+        })}
+      </div>
+
+      <Card className="overflow-hidden">
+        <div className="flex items-center justify-between border-b border-border p-4">
+          <div>
+            <h3 className="text-sm font-semibold">Verification details</h3>
+            <p className="text-xs text-muted-foreground">
+              Duration {elapsed.toFixed(1)}s · Completed {new Date().toLocaleTimeString("en-GB")}
+            </p>
+          </div>
+          <Badge tone="success">All clear</Badge>
+        </div>
+        <div className="overflow-x-auto">
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="border-b border-border bg-secondary/50 text-left text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
+                <th className="px-4 py-3">Record</th>
+                <th className="px-4 py-3">Resident</th>
+                <th className="px-4 py-3">Hash status</th>
+                <th className="px-4 py-3">Verified at</th>
+                <th className="px-4 py-3">Result</th>
+              </tr>
+            </thead>
+            <tbody>
+              {rows.map((r) => (
+                <tr key={r.id} className="border-b border-border last:border-0">
+                  <td className="px-4 py-3 font-medium">{r.id}</td>
+                  <td className="px-4 py-3 text-muted-foreground">{r.resident}</td>
+                  <td className="px-4 py-3">
+                    <code className="rounded bg-secondary px-2 py-0.5 font-mono text-[11px]">
+                      match
+                    </code>
+                  </td>
+                  <td className="px-4 py-3 text-muted-foreground">{r.time}</td>
+                  <td className="px-4 py-3">
+                    <Badge tone="success">Verified</Badge>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </Card>
+    </div>
+  );
+}
+
+/* -------------------------------------------------------------------------- */
+/* Floating action button                                                      */
+/* -------------------------------------------------------------------------- */
+
+export function FloatingActionButton({
+  onClick,
+  children,
+}: {
+  onClick: () => void;
+  children: ReactNode;
+}) {
+  return (
+    <button
+      onClick={onClick}
+      data-inspection-hide
+      className="fixed bottom-6 right-6 z-30 inline-flex items-center gap-2 rounded-full bg-primary px-5 py-3 text-sm font-semibold text-primary-foreground shadow-elegant transition hover:bg-primary/90 hover:scale-105"
+    >
+      {children}
+    </button>
+  );
+}

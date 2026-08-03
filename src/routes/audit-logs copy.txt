@@ -1,0 +1,86 @@
+import { createFileRoute } from "@tanstack/react-router";
+import { AppShell } from "@/components/app-shell";
+import { Card, SectionHeader, Badge } from "@/components/ui-kit";
+import { Filter, Download } from "lucide-react";
+import { ReplayHistoryButton } from "@/components/integrity-playback";
+
+export const Route = createFileRoute("/audit-logs copy")({
+  head: () => ({ meta: [{ title: "Audit Logs — CareGuard" }] }),
+  component: AuditPage,
+});
+
+const events = [
+  { time: "12:41", user: "James Owusu", action: "Updated care plan", record: "CR-8834 · Margaret Ellis", oldHash: "8a12…44ce", newHash: "9f4a…c2e1", ip: "10.0.4.12", status: "Verified" },
+  { time: "12:18", user: "Priya Shah", action: "Recorded fall risk assessment", record: "CR-8833 · Arthur Whitfield", oldHash: "—", newHash: "3d78…91af", ip: "10.0.4.28", status: "Verified" },
+  { time: "12:04", user: "System sweep", action: "Detected hash mismatch", record: "CR-8821 · Nora Blake", oldHash: "aa72…4419", newHash: "aa72…4419", ip: "—", status: "Integrity failed" },
+  { time: "11:48", user: "Ella Morgan", action: "Signed nutrition log", record: "CR-8832 · Beatrice Coleman", oldHash: "0b19…7d3c", newHash: "0b19…7d3c", ip: "10.0.4.02", status: "Pending" },
+  { time: "10:52", user: "James Owusu", action: "Uploaded wound photo", record: "CR-8815 · Frank Doyle", oldHash: "d221…ab90", newHash: "e14c…88b6", ip: "10.0.4.12", status: "Verified" },
+  { time: "09:33", user: "Ella Morgan", action: "Recorded GP visit", record: "CR-8807 · Henry Ashford", oldHash: "—", newHash: "77f2…2a10", ip: "10.0.4.02", status: "Verified" },
+  { time: "03:00", user: "System", action: "Nightly SHA-256 sweep completed", record: "18,204 records", oldHash: "—", newHash: "—", ip: "internal", status: "Verified" },
+];
+
+const tone = (s: string) =>
+  s === "Verified" ? ("success" as const) : s === "Integrity failed" ? ("critical" as const) : ("warning" as const);
+
+function AuditPage() {
+  return (
+    <AppShell>
+      <SectionHeader
+        title="Audit Logs"
+        description="Immutable ledger of every change — old and new SHA-256 hashes preserved."
+        action={
+          <div className="flex gap-2">
+            <button className="inline-flex items-center gap-1.5 rounded-lg border border-border bg-card px-3 py-2 text-xs font-semibold hover:bg-secondary">
+              <Filter className="h-3.5 w-3.5" /> Filters
+            </button>
+            <button className="inline-flex items-center gap-1.5 rounded-lg bg-primary px-3 py-2 text-xs font-semibold text-primary-foreground shadow-elegant hover:bg-primary/90">
+              <Download className="h-3.5 w-3.5" /> Export ledger
+            </button>
+          </div>
+        }
+      />
+
+      <div className="mb-4 flex flex-wrap gap-2">
+        {["Today", "User: All", "Resident: All", "Action: All"].map((f) => (
+          <span key={f} className="inline-flex items-center gap-1.5 rounded-full border border-border bg-card px-3 py-1 text-xs text-muted-foreground">
+            {f}
+          </span>
+        ))}
+      </div>
+
+      <Card className="p-5">
+        <ol className="relative space-y-5 border-l border-border pl-6">
+          {events.map((e, i) => (
+            <li key={i} className="relative">
+              <span
+                className={
+                  "absolute -left-[27px] top-1 grid h-4 w-4 place-items-center rounded-full ring-4 ring-card " +
+                  (e.status === "Verified" ? "bg-success" : e.status === "Integrity failed" ? "bg-critical" : "bg-warning")
+                }
+              />
+              <div className="flex flex-wrap items-baseline gap-x-2 gap-y-1">
+                <span className="font-mono text-xs text-muted-foreground">{e.time}</span>
+                <p className="text-sm">
+                  <span className="font-medium">{e.user}</span>{" "}
+                  <span className="text-muted-foreground">{e.action}</span>
+                </p>
+                <Badge tone={tone(e.status)}>{e.status}</Badge>
+              </div>
+              <p className="mt-1 text-xs text-muted-foreground">{e.record} · IP {e.ip}</p>
+              <div className="mt-2 flex flex-wrap items-center gap-2 text-[11px]">
+                <span className="rounded-md border border-border bg-secondary px-2 py-1 font-mono">
+                  old: {e.oldHash}
+                </span>
+                <span className="text-muted-foreground">→</span>
+                <span className="rounded-md border border-border bg-secondary px-2 py-1 font-mono">
+                  new: {e.newHash}
+                </span>
+                <ReplayHistoryButton recordId={e.record.split(" · ")[0]} recordTitle={e.record} variant="ghost" />
+              </div>
+            </li>
+          ))}
+        </ol>
+      </Card>
+    </AppShell>
+  );
+}

@@ -1,0 +1,58 @@
+// src/lib/auth.tsx
+import { useNavigate } from "@tanstack/react-router";
+import { useEffect, useState } from "react";
+
+export type User = {
+  id: string;
+  name: string;
+  email: string;
+  role: string;
+};
+
+let token: string | null = localStorage.getItem("token");
+let currentUser: User | null = null;
+
+export const auth = {
+  getToken: () => token,
+  setToken: (newToken: string) => {
+    token = newToken;
+    localStorage.setItem("token", newToken);
+  },
+  logout: () => {
+    token = null;
+    currentUser = null;
+    localStorage.removeItem("token");
+  },
+  isAuthenticated: () => !!token,
+};
+
+// Optional: Axios instance with auth header
+import axios from "axios";
+
+export const api = axios.create({
+  baseURL: import.meta.env.VITE_API_URL || "http://localhost:3001/api",
+  headers: {
+    "Content-Type": "application/json",
+  },
+});
+
+// Add token to every request
+api.interceptors.request.use((config) => {
+  const t = auth.getToken();
+  if (t) {
+    config.headers.Authorization = `Bearer ${t}`;
+  }
+  return config;
+});
+
+// Handle 401 responses globally
+api.interceptors.response.use(
+  (response) => response,
+  (error) => {
+    if (error.response?.status === 401) {
+      auth.logout();
+      window.location.href = "/login";
+    }
+    return Promise.reject(error);
+  },
+);

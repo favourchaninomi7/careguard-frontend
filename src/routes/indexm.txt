@@ -1,0 +1,634 @@
+import { createFileRoute } from "@tanstack/react-router";
+import { useState } from "react";
+import { AppShell } from "@/components/app-shell";
+import {
+  AddResidentModal,
+  RecordMedicationModal,
+  VerifyAllExperience,
+  GenerateReportModal,
+} from "@/components/modals";
+import { Card, Badge, Dot } from "@/components/ui-kit";
+import {
+  Users,
+  UserCog,
+  ShieldCheck,
+  FileCheck2,
+  Clock3,
+  AlertTriangle,
+  ArrowUpRight,
+  ArrowDownRight,
+  Plus,
+  Pill,
+  ScrollText,
+  FileDown,
+  Activity,
+} from "lucide-react";
+import {
+  AreaChart,
+  Area,
+  BarChart,
+  Bar,
+  LineChart,
+  Line,
+  ResponsiveContainer,
+  Tooltip,
+  XAxis,
+  YAxis,
+  CartesianGrid,
+} from "recharts";
+
+export const Route = createFileRoute("/indexm")({
+  head: () => ({
+    meta: [
+      { title: "Dashboard — CareGuard" },
+      {
+        name: "description",
+        content:
+          "Overview of compliance score, resident status, medication adherence and record integrity.",
+      },
+    ],
+  }),
+  component: DashboardPage,
+});
+
+const kpis = [
+  {
+    label: "Total Residents",
+    value: "128",
+    delta: "+3",
+    trend: "up",
+    icon: Users,
+    tone: "info" as const,
+  },
+  {
+    label: "Care Staff",
+    value: "42",
+    delta: "+2",
+    trend: "up",
+    icon: UserCog,
+    tone: "neutral" as const,
+  },
+  {
+    label: "Compliance Score",
+    value: "96.4%",
+    delta: "+1.2%",
+    trend: "up",
+    icon: ShieldCheck,
+    tone: "success" as const,
+  },
+  {
+    label: "Verified Records",
+    value: "18,204",
+    delta: "+412",
+    trend: "up",
+    icon: FileCheck2,
+    tone: "info" as const,
+  },
+  {
+    label: "Pending Reviews",
+    value: "17",
+    delta: "-4",
+    trend: "down",
+    icon: Clock3,
+    tone: "warning" as const,
+  },
+  {
+    label: "Integrity Alerts",
+    value: "2",
+    delta: "+1",
+    trend: "up",
+    icon: AlertTriangle,
+    tone: "critical" as const,
+  },
+];
+
+const complianceTrend = [
+  { m: "Jan", score: 91 },
+  { m: "Feb", score: 92 },
+  { m: "Mar", score: 93 },
+  { m: "Apr", score: 92.5 },
+  { m: "May", score: 94 },
+  { m: "Jun", score: 95 },
+  { m: "Jul", score: 94.5 },
+  { m: "Aug", score: 95.8 },
+  { m: "Sep", score: 96.4 },
+];
+
+const integrityData = [
+  { d: "Mon", verified: 812, failed: 1 },
+  { d: "Tue", verified: 940, failed: 0 },
+  { d: "Wed", verified: 1020, failed: 2 },
+  { d: "Thu", verified: 888, failed: 0 },
+  { d: "Fri", verified: 1104, failed: 1 },
+  { d: "Sat", verified: 640, failed: 0 },
+  { d: "Sun", verified: 592, failed: 0 },
+];
+
+const medsData = [
+  { d: "Mon", pct: 98 },
+  { d: "Tue", pct: 99 },
+  { d: "Wed", pct: 97 },
+  { d: "Thu", pct: 99 },
+  { d: "Fri", pct: 96 },
+  { d: "Sat", pct: 98 },
+  { d: "Sun", pct: 99 },
+];
+
+const activity = [
+  {
+    icon: FileCheck2,
+    tone: "success" as const,
+    title: "Care plan verified",
+    meta: "Margaret Ellis · Hash matched",
+    time: "2 min ago",
+  },
+  {
+    icon: Pill,
+    tone: "info" as const,
+    title: "Medication administered",
+    meta: "Room 214 · Ramipril 5mg",
+    time: "18 min ago",
+  },
+  {
+    icon: AlertTriangle,
+    tone: "critical" as const,
+    title: "Integrity alert raised",
+    meta: "Record #CR-8821 · Hash mismatch",
+    time: "42 min ago",
+  },
+  {
+    icon: ScrollText,
+    tone: "neutral" as const,
+    title: "Audit exported",
+    meta: "September inspection bundle · PDF",
+    time: "1 hr ago",
+  },
+  {
+    icon: Users,
+    tone: "info" as const,
+    title: "New resident admitted",
+    meta: "Arthur Whitfield · Room 118",
+    time: "3 hr ago",
+  },
+];
+
+const alerts = [
+  {
+    title: "Hash mismatch on care record",
+    record: "CR-8821 · Nora Blake",
+    severity: "critical" as const,
+    time: "42m",
+  },
+  {
+    title: "Signature missing",
+    record: "MED-4402 · Frank Doyle",
+    severity: "warning" as const,
+    time: "2h",
+  },
+  {
+    title: "Delayed verification queue",
+    record: "Batch #Q-190",
+    severity: "warning" as const,
+    time: "5h",
+  },
+];
+
+const reviews = [
+  { name: "Margaret Ellis", room: "204", due: "Today", tone: "warning" as const },
+  { name: "Arthur Whitfield", room: "118", due: "Tomorrow", tone: "info" as const },
+  { name: "Beatrice Coleman", room: "302", due: "Thu, 9 Jul", tone: "neutral" as const },
+  { name: "Henry Ashford", room: "221", due: "Fri, 10 Jul", tone: "neutral" as const },
+];
+
+const auditLog = [
+  { user: "Ella Morgan", action: "Verified 412 records", time: "09:42" },
+  { user: "James Owusu", action: "Updated care plan · Room 204", time: "09:18" },
+  { user: "System", action: "Nightly SHA-256 sweep complete", time: "03:00" },
+  { user: "Priya Shah", action: "Exported CQC report", time: "Yesterday" },
+];
+
+const tooltipStyle = {
+  contentStyle: {
+    borderRadius: 12,
+    border: "1px solid var(--border)",
+    background: "var(--card)",
+    fontSize: 12,
+    boxShadow: "0 8px 24px -12px rgb(15 23 42 / 0.15)",
+  },
+  labelStyle: { color: "var(--muted-foreground)", fontWeight: 500 },
+};
+
+function DashboardPage() {
+  const [addRes, setAddRes] = useState(false);
+  const [addMed, setAddMed] = useState(false);
+  const [verify, setVerify] = useState(false);
+  const [report, setReport] = useState(false);
+  return (
+    <AppShell>
+      <div className="mb-6 flex flex-wrap items-end justify-between gap-3">
+        <div>
+          <p className="text-xs font-semibold uppercase tracking-wider text-primary">
+            Compliance overview
+          </p>
+          <h1 className="mt-1 text-2xl font-semibold tracking-tight text-foreground">
+            Good morning, Ella
+          </h1>
+          <p className="mt-1 text-sm text-muted-foreground">
+            Elmwood Grove Care Home · Registered with CQC · 128 residents in care
+          </p>
+        </div>
+        <div className="flex flex-wrap gap-2">
+          <button
+            onClick={() => setAddRes(true)}
+            data-inspection-hide
+            className="inline-flex items-center gap-1.5 rounded-lg border border-border bg-card px-3 py-2 text-xs font-semibold text-foreground hover:bg-secondary"
+          >
+            <Plus className="h-3.5 w-3.5" /> Add Resident
+          </button>
+          <button
+            onClick={() => setAddMed(true)}
+            data-inspection-hide
+            className="inline-flex items-center gap-1.5 rounded-lg border border-border bg-card px-3 py-2 text-xs font-semibold text-foreground hover:bg-secondary"
+          >
+            <Pill className="h-3.5 w-3.5" /> Record Medication
+          </button>
+          <button
+            onClick={() => setVerify(true)}
+            className="inline-flex items-center gap-1.5 rounded-lg border border-border bg-card px-3 py-2 text-xs font-semibold text-foreground hover:bg-secondary"
+          >
+            <ShieldCheck className="h-3.5 w-3.5" /> Verify Records
+          </button>
+          <button
+            onClick={() => setReport(true)}
+            className="inline-flex items-center gap-1.5 rounded-lg bg-primary px-3 py-2 text-xs font-semibold text-primary-foreground shadow-elegant hover:bg-primary/90"
+          >
+            <FileDown className="h-3.5 w-3.5" /> Export Report
+          </button>
+        </div>
+      </div>
+
+      {/* KPIs */}
+      <div className="grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-6">
+        {kpis.map((k) => {
+          const Icon = k.icon;
+          const up = k.trend === "up";
+          const good = k.label === "Pending Reviews" || k.label === "Integrity Alerts" ? !up : up;
+          return (
+            <Card key={k.label} className="p-4">
+              <div className="flex items-center justify-between">
+                <div className="grid h-8 w-8 place-items-center rounded-lg bg-primary-soft text-primary">
+                  <Icon className="h-4 w-4" />
+                </div>
+                <span
+                  className={
+                    "inline-flex items-center gap-0.5 text-[11px] font-semibold " +
+                    (good ? "text-success" : "text-critical")
+                  }
+                >
+                  {up ? (
+                    <ArrowUpRight className="h-3 w-3" />
+                  ) : (
+                    <ArrowDownRight className="h-3 w-3" />
+                  )}
+                  {k.delta}
+                </span>
+              </div>
+              <p className="mt-3 text-xs font-medium text-muted-foreground">{k.label}</p>
+              <p className="mt-0.5 text-2xl font-semibold tracking-tight text-foreground">
+                {k.value}
+              </p>
+            </Card>
+          );
+        })}
+      </div>
+
+      {/* Charts row */}
+      <div className="mt-6 grid gap-4 lg:grid-cols-3">
+        <Card className="p-5 lg:col-span-2">
+          <div className="flex items-center justify-between">
+            <div>
+              <h3 className="text-sm font-semibold">Compliance trend</h3>
+              <p className="text-xs text-muted-foreground">Rolling 9-month CQC score</p>
+            </div>
+            <Badge tone="success">+5.4% YoY</Badge>
+          </div>
+          <div className="mt-4 h-64">
+            <ResponsiveContainer width="100%" height="100%">
+              <AreaChart
+                data={complianceTrend}
+                margin={{ top: 10, right: 10, left: -20, bottom: 0 }}
+              >
+                <defs>
+                  <linearGradient id="g1" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="0%" stopColor="var(--primary)" stopOpacity={0.35} />
+                    <stop offset="100%" stopColor="var(--primary)" stopOpacity={0} />
+                  </linearGradient>
+                </defs>
+                <CartesianGrid stroke="var(--border)" vertical={false} />
+                <XAxis
+                  dataKey="m"
+                  tickLine={false}
+                  axisLine={false}
+                  tick={{ fontSize: 11, fill: "var(--muted-foreground)" }}
+                />
+                <YAxis
+                  domain={[85, 100]}
+                  tickLine={false}
+                  axisLine={false}
+                  tick={{ fontSize: 11, fill: "var(--muted-foreground)" }}
+                />
+                <Tooltip {...tooltipStyle} />
+                <Area
+                  type="monotone"
+                  dataKey="score"
+                  stroke="var(--primary)"
+                  strokeWidth={2.5}
+                  fill="url(#g1)"
+                />
+              </AreaChart>
+            </ResponsiveContainer>
+          </div>
+        </Card>
+
+        <Card className="p-5">
+          <div className="flex items-center justify-between">
+            <h3 className="text-sm font-semibold">Compliance score</h3>
+            <Badge tone="success">Excellent</Badge>
+          </div>
+          <div className="mt-6 flex flex-col items-center">
+            <Gauge value={96.4} />
+            <p className="mt-3 text-xs text-muted-foreground text-center">
+              Above CQC "Good" threshold (85%). Next inspection window opens in 12 days.
+            </p>
+          </div>
+          <div className="mt-4 grid grid-cols-3 divide-x divide-border border-t border-border pt-3 text-center">
+            <div>
+              <p className="text-[11px] text-muted-foreground">Safe</p>
+              <p className="text-sm font-semibold">98%</p>
+            </div>
+            <div>
+              <p className="text-[11px] text-muted-foreground">Effective</p>
+              <p className="text-sm font-semibold">95%</p>
+            </div>
+            <div>
+              <p className="text-[11px] text-muted-foreground">Well-led</p>
+              <p className="text-sm font-semibold">96%</p>
+            </div>
+          </div>
+        </Card>
+      </div>
+
+      <div className="mt-4 grid gap-4 lg:grid-cols-2">
+        <Card className="p-5">
+          <div className="flex items-center justify-between">
+            <div>
+              <h3 className="text-sm font-semibold">Integrity verification</h3>
+              <p className="text-xs text-muted-foreground">SHA-256 hash checks this week</p>
+            </div>
+            <Badge tone="info">6,196 checks</Badge>
+          </div>
+          <div className="mt-4 h-56">
+            <ResponsiveContainer width="100%" height="100%">
+              <BarChart data={integrityData} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
+                <CartesianGrid stroke="var(--border)" vertical={false} />
+                <XAxis
+                  dataKey="d"
+                  tickLine={false}
+                  axisLine={false}
+                  tick={{ fontSize: 11, fill: "var(--muted-foreground)" }}
+                />
+                <YAxis
+                  tickLine={false}
+                  axisLine={false}
+                  tick={{ fontSize: 11, fill: "var(--muted-foreground)" }}
+                />
+                <Tooltip {...tooltipStyle} />
+                <Bar dataKey="verified" fill="var(--primary)" radius={[6, 6, 0, 0]} />
+                <Bar dataKey="failed" fill="var(--critical)" radius={[6, 6, 0, 0]} />
+              </BarChart>
+            </ResponsiveContainer>
+          </div>
+        </Card>
+
+        <Card className="p-5">
+          <div className="flex items-center justify-between">
+            <div>
+              <h3 className="text-sm font-semibold">Medication compliance</h3>
+              <p className="text-xs text-muted-foreground">On-time administration rate</p>
+            </div>
+            <Badge tone="success">98% avg</Badge>
+          </div>
+          <div className="mt-4 h-56">
+            <ResponsiveContainer width="100%" height="100%">
+              <LineChart data={medsData} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
+                <CartesianGrid stroke="var(--border)" vertical={false} />
+                <XAxis
+                  dataKey="d"
+                  tickLine={false}
+                  axisLine={false}
+                  tick={{ fontSize: 11, fill: "var(--muted-foreground)" }}
+                />
+                <YAxis
+                  domain={[90, 100]}
+                  tickLine={false}
+                  axisLine={false}
+                  tick={{ fontSize: 11, fill: "var(--muted-foreground)" }}
+                />
+                <Tooltip {...tooltipStyle} />
+                <Line
+                  type="monotone"
+                  dataKey="pct"
+                  stroke="var(--success)"
+                  strokeWidth={2.5}
+                  dot={{ r: 4, fill: "var(--success)" }}
+                />
+              </LineChart>
+            </ResponsiveContainer>
+          </div>
+        </Card>
+      </div>
+
+      {/* Activity + alerts + reviews */}
+      <div className="mt-4 grid gap-4 lg:grid-cols-3">
+        <Card className="p-5 lg:col-span-2">
+          <div className="flex items-center justify-between">
+            <h3 className="text-sm font-semibold">Recent activity</h3>
+            <button className="text-xs font-semibold text-primary hover:underline">View all</button>
+          </div>
+          <ul className="mt-4 space-y-3">
+            {activity.map((a, i) => {
+              const Icon = a.icon;
+              const toneBg: Record<string, string> = {
+                success: "bg-success-soft text-success",
+                info: "bg-primary-soft text-primary",
+                critical: "bg-critical-soft text-critical",
+                neutral: "bg-secondary text-secondary-foreground",
+              };
+              return (
+                <li
+                  key={i}
+                  className="flex items-start gap-3 rounded-xl border border-transparent px-2 py-2 hover:border-border hover:bg-secondary/50"
+                >
+                  <div
+                    className={
+                      "grid h-9 w-9 shrink-0 place-items-center rounded-lg " + toneBg[a.tone]
+                    }
+                  >
+                    <Icon className="h-4 w-4" />
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    <p className="text-sm font-medium text-foreground">{a.title}</p>
+                    <p className="truncate text-xs text-muted-foreground">{a.meta}</p>
+                  </div>
+                  <span className="shrink-0 text-[11px] text-muted-foreground">{a.time}</span>
+                </li>
+              );
+            })}
+          </ul>
+        </Card>
+
+        <div className="space-y-4">
+          <Card className="p-5">
+            <div className="flex items-center justify-between">
+              <h3 className="text-sm font-semibold">Integrity alerts</h3>
+              <Badge tone="critical">
+                {alerts.filter((a) => a.severity === "critical").length} critical
+              </Badge>
+            </div>
+            <ul className="mt-3 space-y-2">
+              {alerts.map((a, i) => (
+                <li key={i} className="flex items-start gap-3 rounded-xl border border-border p-3">
+                  <Dot tone={a.severity} />
+                  <div className="min-w-0 flex-1">
+                    <p className="text-sm font-medium">{a.title}</p>
+                    <p className="truncate text-xs text-muted-foreground">{a.record}</p>
+                  </div>
+                  <span className="text-[11px] text-muted-foreground">{a.time}</span>
+                </li>
+              ))}
+            </ul>
+          </Card>
+
+          <Card className="p-5">
+            <h3 className="text-sm font-semibold">System status</h3>
+            <ul className="mt-3 space-y-2 text-sm">
+              <li className="flex items-center justify-between">
+                <span className="flex items-center gap-2 text-muted-foreground">
+                  <Activity className="h-3.5 w-3.5" /> Verification engine
+                </span>
+                <Badge tone="success">Operational</Badge>
+              </li>
+              <li className="flex items-center justify-between">
+                <span className="flex items-center gap-2 text-muted-foreground">
+                  <Activity className="h-3.5 w-3.5" /> Audit ledger
+                </span>
+                <Badge tone="success">Sealed</Badge>
+              </li>
+              <li className="flex items-center justify-between">
+                <span className="flex items-center gap-2 text-muted-foreground">
+                  <Activity className="h-3.5 w-3.5" /> Backup replica
+                </span>
+                <Badge tone="success">Synced 04:00</Badge>
+              </li>
+            </ul>
+          </Card>
+        </div>
+      </div>
+
+      <div className="mt-4 grid gap-4 lg:grid-cols-2">
+        <Card className="p-5">
+          <div className="flex items-center justify-between">
+            <h3 className="text-sm font-semibold">Upcoming resident reviews</h3>
+            <button className="text-xs font-semibold text-primary hover:underline">Schedule</button>
+          </div>
+          <ul className="mt-3 divide-y divide-border">
+            {reviews.map((r) => (
+              <li key={r.name} className="flex items-center justify-between py-3">
+                <div className="flex items-center gap-3">
+                  <div className="grid h-9 w-9 place-items-center rounded-full bg-secondary text-xs font-semibold">
+                    {r.name
+                      .split(" ")
+                      .map((n) => n[0])
+                      .join("")}
+                  </div>
+                  <div>
+                    <p className="text-sm font-medium">{r.name}</p>
+                    <p className="text-xs text-muted-foreground">Room {r.room}</p>
+                  </div>
+                </div>
+                <Badge tone={r.tone}>{r.due}</Badge>
+              </li>
+            ))}
+          </ul>
+        </Card>
+
+        <Card className="p-5">
+          <div className="flex items-center justify-between">
+            <h3 className="text-sm font-semibold">Recent audit logs</h3>
+            <button className="text-xs font-semibold text-primary hover:underline">
+              Open ledger
+            </button>
+          </div>
+          <ul className="mt-3 space-y-3">
+            {auditLog.map((l, i) => (
+              <li key={i} className="flex items-start gap-3">
+                <div className="mt-1 h-2 w-2 shrink-0 rounded-full bg-primary" />
+                <div className="min-w-0 flex-1">
+                  <p className="text-sm">
+                    <span className="font-medium">{l.user}</span>{" "}
+                    <span className="text-muted-foreground">{l.action}</span>
+                  </p>
+                </div>
+                <span className="text-[11px] text-muted-foreground">{l.time}</span>
+              </li>
+            ))}
+          </ul>
+        </Card>
+      </div>
+
+      <AddResidentModal open={addRes} onClose={() => setAddRes(false)} resident={null} />
+      <RecordMedicationModal open={addMed} onClose={() => setAddMed(false)} />
+      <VerifyAllExperience open={verify} onClose={() => setVerify(false)} />
+      <GenerateReportModal open={report} onClose={() => setReport(false)} />
+    </AppShell>
+  );
+}
+
+function Gauge({ value }: { value: number }) {
+  const size = 160;
+  const stroke = 14;
+  const r = (size - stroke) / 2;
+  const c = 2 * Math.PI * r;
+  const offset = c - (value / 100) * c;
+  return (
+    <div className="relative" style={{ width: size, height: size }}>
+      <svg width={size} height={size} className="-rotate-90">
+        <circle
+          cx={size / 2}
+          cy={size / 2}
+          r={r}
+          stroke="var(--border)"
+          strokeWidth={stroke}
+          fill="none"
+        />
+        <circle
+          cx={size / 2}
+          cy={size / 2}
+          r={r}
+          stroke="var(--success)"
+          strokeWidth={stroke}
+          strokeLinecap="round"
+          fill="none"
+          strokeDasharray={c}
+          strokeDashoffset={offset}
+        />
+      </svg>
+      <div className="absolute inset-0 grid place-items-center">
+        <div className="text-center">
+          <p className="text-3xl font-semibold tracking-tight">{value}%</p>
+          <p className="text-[11px] text-muted-foreground">CQC score</p>
+        </div>
+      </div>
+    </div>
+  );
+}
