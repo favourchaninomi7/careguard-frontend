@@ -12,18 +12,38 @@ export const Route = createFileRoute("/audit-logs")({
   component: AuditPage,
 });
 
-const tone = (s: string) =>
-  s === "Verified" || s === "SUCCESS"
-    ? ("success" as const)
-    : s === "Integrity failed" || s === "FAILURE"
-      ? ("critical" as const)
-      : ("warning" as const);
-
 function formatTime(iso: string) {
   return new Date(iso).toLocaleTimeString([], {
     hour: "2-digit",
     minute: "2-digit",
     hour12: false,
+  });
+}
+
+function formatDateLabel(iso: string) {
+  const date = new Date(iso);
+  const today = new Date();
+  const yesterday = new Date();
+  yesterday.setDate(today.getDate() - 1);
+
+  const isToday =
+    date.getFullYear() === today.getFullYear() &&
+    date.getMonth() === today.getMonth() &&
+    date.getDate() === today.getDate();
+
+  const isYesterday =
+    date.getFullYear() === yesterday.getFullYear() &&
+    date.getMonth() === yesterday.getMonth() &&
+    date.getDate() === yesterday.getDate();
+
+  if (isToday) return "Today";
+  if (isYesterday) return "Yesterday";
+
+  return date.toLocaleDateString("en-GB", {
+    weekday: "short",
+    day: "numeric",
+    month: "short",
+    year: "numeric",
   });
 }
 
@@ -41,18 +61,45 @@ function recordLine(log: AuditLogItem) {
   return code;
 }
 
+function getBadge(entry: {
+  action?: string;
+  actionLabel?: string;
+  status?: string;
+  statusLabel?: string;
+}) {
+  const action = (entry.actionLabel || entry.action || "").toLowerCase();
+  const status = (entry.statusLabel || entry.status || "").toUpperCase();
+
+  if (
+    action.includes("mismatch") ||
+    action.includes("integrity_failed") ||
+    action.includes("failed") ||
+    status === "FAILURE" ||
+    status === "INTEGRITY FAILED"
+  ) {
+    return { label: "Failed", tone: "critical" as const };
+  }
+
+  if (
+    action.includes("verified") ||
+    action.includes("logged in") ||
+    status === "SUCCESS" ||
+    status === "VERIFIED"
+  ) {
+    return { label: "Verified", tone: "success" as const };
+  }
+
+  return {
+    label: entry.statusLabel || entry.status || "Info",
+    tone: "warning" as const,
+  };
+}
+
 function AuditPage() {
   const [page, setPage] = useState(1);
   const limit = 20;
 
-  // Optional filters (wire to UI later)
-  const [filters] = useState({
-    // userId: undefined,
-    // action: undefined,
-    // residentId: undefined,
-    // search: undefined,
-    // from / to for "Today" can be set here
-  });
+  const [filters] = useState({});
 
   const query = useMemo(
     () => ({
@@ -67,6 +114,20 @@ function AuditPage() {
 
   const items = data?.items ?? [];
   const meta = data?.meta ?? { total: 0, page: 1, limit, totalPages: 0 };
+
+  // Group items by date (YYYY-MM-DD)
+  const grouped = useMemo(() => {
+    const map = new Map<string, AuditLogItem[]>();
+
+    for (const item of items) {
+      const key = new Date(item.timestamp).toISOString().slice(0, 10); // YYYY-MM-DD
+      if (!map.has(key)) map.set(key, []);
+      map.get(key)!.push(item);
+    }
+
+    // Sort dates descending (newest first)
+    return Array.from(map.entries()).sort(([a], [b]) => (a < b ? 1 : -1));
+  }, [items]);
 
   return (
     <AppShell>
@@ -104,49 +165,70 @@ function AuditPage() {
         ) : items.length === 0 ? (
           <p className="text-sm text-muted-foreground">No audit logs found.</p>
         ) : (
-          <ol className="relative space-y-5 border-l border-border pl-6">
-            {items.map((e) => (
-              <li key={e.id} className="relative">
-                <span
-                  className={
-                    "absolute -left-[27px] top-1 grid h-4 w-4 place-items-center rounded-full ring-4 ring-card " +
-                    (e.statusLabel === "Verified" || e.status === "SUCCESS"
-                      ? "bg-success"
-                      : e.statusLabel === "Integrity failed" || e.status === "FAILURE"
-                        ? "bg-critical"
-                        : "bg-warning")
-                  }
-                />
-                <div className="flex flex-wrap items-baseline gap-x-2 gap-y-1">
-                  <span className="font-mono text-xs text-muted-foreground">
-                    {formatTime(e.timestamp)}
+          <div className="space-y-8">
+            {grouped.map(([dateKey, logs]) => (
+              <div key={dateKey}>
+                {/* Date header */}
+                <div className="mb-4 flex items-center gap-3">
+                  <h3 className="text-sm font-semibold text-foreground">
+                    {formatDateLabel(logs[0].timestamp)}
+                  </h3>
+                  <div className="h-px flex-1 bg-border" />
+                  <span className="text-xs text-muted-foreground">
+                    {logs.length} event{logs.length !== 1 ? "s" : ""}
                   </span>
-                  <p className="text-sm">
-                    <span className="font-medium">{e.user?.name ?? "System"}</span>{" "}
-                    <span className="text-muted-foreground">{e.actionLabel}</span>
-                  </p>
-                  <Badge tone={tone(e.statusLabel || e.status)}>{e.statusLabel || e.status}</Badge>
                 </div>
-                <p className="mt-1 text-xs text-muted-foreground">
-                  {recordLine(e)} · IP {e.ipAddress ?? "—"}
-                </p>
-                <div className="mt-2 flex flex-wrap items-center gap-2 text-[11px]">
-                  <span className="rounded-md border border-border bg-secondary px-2 py-1 font-mono">
-                    old: {shortHash(e.oldHash)}
-                  </span>
-                  <span className="text-muted-foreground">→</span>
-                  <span className="rounded-md border border-border bg-secondary px-2 py-1 font-mono">
-                    new: {shortHash(e.newHash)}
-                  </span>
-                  <ReplayHistoryButton
-                    recordId={e.entityId}
-                    recordTitle={recordLine(e)}
-                    variant="ghost"
-                  />
-                </div>
-              </li>
+
+                {/* Timeline for this date */}
+                <ol className="relative space-y-5 border-l border-border pl-6">
+                  {logs.map((e) => {
+                    const badge = getBadge(e);
+                    return (
+                      <li key={e.id} className="relative">
+                        <span
+                          className={
+                            "absolute -left-[27px] top-1 grid h-4 w-4 place-items-center rounded-full ring-4 ring-card " +
+                            (badge.tone === "success"
+                              ? "bg-success"
+                              : badge.tone === "critical"
+                                ? "bg-critical"
+                                : "bg-warning")
+                          }
+                        />
+                        <div className="flex flex-wrap items-baseline gap-x-2 gap-y-1">
+                          <span className="font-mono text-xs text-muted-foreground">
+                            {formatTime(e.timestamp)}
+                          </span>
+                          <p className="text-sm">
+                            <span className="font-medium">{e.user?.name ?? "System"}</span>{" "}
+                            <span className="text-muted-foreground">{e.actionLabel}</span>
+                          </p>
+                          <Badge tone={badge.tone}>{badge.label}</Badge>
+                        </div>
+                        <p className="mt-1 text-xs text-muted-foreground">
+                          {recordLine(e)} · IP {e.ipAddress ?? "—"}
+                        </p>
+                        <div className="mt-2 flex flex-wrap items-center gap-2 text-[11px]">
+                          <span className="rounded-md border border-border bg-secondary px-2 py-1 font-mono">
+                            old: {shortHash(e.oldHash)}
+                          </span>
+                          <span className="text-muted-foreground">→</span>
+                          <span className="rounded-md border border-border bg-secondary px-2 py-1 font-mono">
+                            new: {shortHash(e.newHash)}
+                          </span>
+                          <ReplayHistoryButton
+                            recordId={e.entityId}
+                            recordTitle={recordLine(e)}
+                            variant="ghost"
+                          />
+                        </div>
+                      </li>
+                    );
+                  })}
+                </ol>
+              </div>
             ))}
-          </ol>
+          </div>
         )}
 
         {/* Pagination */}

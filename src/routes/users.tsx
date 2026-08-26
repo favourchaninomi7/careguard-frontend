@@ -53,7 +53,7 @@ function UsersPage() {
   const [reset, setReset] = useState<string | null>(null);
   const [archive, setArchive] = useState<string | null>(null);
 
-  console.log(user);
+  console.log(staff);
 
   return (
     <AppShell>
@@ -86,7 +86,7 @@ function UsersPage() {
             </thead>
             <tbody>
               {staff
-                .filter((u) => u.id !== user?.id)
+                .filter((u) => u.id !== user?.id && u.id !== "system")
                 .map((u) => (
                   <tr
                     key={u.email}

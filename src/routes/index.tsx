@@ -37,6 +37,7 @@ import {
   CartesianGrid,
 } from "recharts";
 import { useDashboard } from "@/hooks/use-dashboard";
+import { useAuthStore } from "@/store";
 
 export const Route = createFileRoute("/")({
   head: () => ({
@@ -83,8 +84,12 @@ function DashboardPage() {
 
   const { data, isLoading } = useDashboard();
 
+  const { user } = useAuthStore();
+
+  console.log({ user });
+
   // Safe fallbacks
-  const greetingName = data?.greetingName ?? "there";
+  const greetingName = user?.firstName ?? data?.greetingName ?? "there";
   const careHomeName = data?.careHomeName ?? "Care Home";
   const totalResidents = data?.totalResidents ?? 0;
 

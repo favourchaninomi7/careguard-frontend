@@ -15,7 +15,8 @@ function normalizeListResponse(res: any): { items: AuditLogItem[]; meta: AuditLo
   // 1) { data: AuditLogItem[], meta }  (preferred backend shape)
   // 2) { data: AuditLogItem[] }        (current response you pasted)
   // 3) raw array
-  const payload = res?.data ?? res;
+  const payload = res;
+  // const payload = res?.data ?? res;
 
   if (Array.isArray(payload)) {
     return {
@@ -52,19 +53,20 @@ export function useAuditLogs(params: AuditLogQuery = {}) {
     queryKey: auditKeys.list(params),
     queryFn: async () => {
       const res = await auditService.getLogs(params);
+      // console.log({ male: res });
       return normalizeListResponse(res);
     },
     placeholderData: (prev) => prev, // keeps list stable while changing page
   });
 }
 
-export function useAuditByEntity(entityType: string, entityId: string) {
+export function useAuditByEntity(entityType: string, entityId: string, enabled = true) {
   return useQuery({
     queryKey: auditKeys.entity(entityType, entityId),
     queryFn: async () => {
       const res = await auditService.getByEntity(entityType, entityId);
       return res?.data ?? res;
     },
-    enabled: !!entityType && !!entityId,
+    enabled: enabled && !!entityType && !!entityId,
   });
 }

@@ -14,3 +14,11 @@ export function useIntegrityDashboard() {
     staleTime: 1000 * 60, // 1 minute
   });
 }
+
+export function useIntegrityHistory(entityType: string, entityId: string, enabled = true) {
+  return useQuery({
+    queryKey: ["integrity-history", entityType, entityId],
+    queryFn: () => integrityService.getHistory(entityType, entityId),
+    enabled: enabled && !!entityType && !!entityId,
+  });
+}

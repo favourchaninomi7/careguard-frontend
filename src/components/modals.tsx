@@ -3213,7 +3213,8 @@ function VerifyResultsView({
       icon: ShieldAlert,
     },
     {
-      l: "Compliance score",
+      // l: "Compliance score",
+      l: "Integrity pass rate",
       v: `${compliance}%`,
       tone: compliance === 100 ? ("success" as const) : ("warning" as const),
       icon: Sparkles,

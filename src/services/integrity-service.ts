@@ -67,6 +67,35 @@ export const integrityService = {
     return data?.data ?? data;
   },
 
+  // integrity-service.ts
+  // async getHistory(entityType: string, entityId: string) {
+  //   // const { data } = await api.get(`/record-integrity/${entityType}/${entityId}/history`);
+  //   const { data } = await api.get(`/record-integrity/by-entity/${entityId}`);
+  //   const rows = data?.data ?? data ?? [];
+  //   return Array.isArray(rows) ? rows : [];
+  // },
+
+  async getHistory(entityType: string, entityId: string) {
+    // Prefer type-specific history when type is known
+    // if (entityType) {
+    //   const { data } = await api.get(
+    //     `/record-integrity/${entityType}/${entityId}/history`,
+    //   );
+    //   const rows = data?.data ?? data ?? [];
+    //   if (Array.isArray(rows) && rows.length > 0) return rows;
+    // }
+
+    // Fallback: all rows for this entityId
+    const { data } = await api.get(`/record-integrity/by-entity/${entityId}`);
+    return data?.data ?? data ?? [];
+  },
+
+  async getHistoryByEntityId(entityId: string) {
+    const clean = entityId.replace(/^RES-/i, "");
+    const { data } = await api.get(`/record-integrity/by-entity/${clean}`);
+    return data?.data ?? data ?? [];
+  },
+
   //   async verifyAll(force = false): Promise<VerifyAllResult> {
   //     const { data } = await api.post(
   //       "/record-integrity/verify-all",

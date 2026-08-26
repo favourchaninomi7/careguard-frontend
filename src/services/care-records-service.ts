@@ -126,10 +126,10 @@ export const careRecordsService = {
   },
 
   async getAll(page: number = 1, limit: number = 50): Promise<CareRecordsResponse> {
-    const { data } = await api.get<CareRecordsResponse>(
+    const { data } = await api.get<{ data: CareRecordsResponse }>(
       `/care-records?page=${page}&limit=${limit}`,
     );
-    return data;
+    return data.data; // Ensure we return the correct shape
   },
 
   async getStats(): Promise<{ data: CareRecordsStats }> {

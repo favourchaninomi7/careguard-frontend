@@ -21,19 +21,34 @@ import {
 import { Card, Badge } from "./ui-kit";
 import { fakeSha256, shortHash } from "@/lib/hash";
 import { BtnGhost, BtnPrimary } from "./modal";
+import { useIntegrityHistory } from "@/hooks/use-integrity";
 
-export type PlaybackVersion = {
+// export type PlaybackVersion = {
+//   v: number;
+//   action: string;
+//   time: string;
+//   user: string;
+//   fields: { name: string; before: string; after: string }[];
+//   oldHash: string;
+//   newHash: string;
+//   verified: "verified" | "warning" | "failed";
+//   ip: string;
+//   device: string;
+//   comment?: string;
+// };
+
+type PlaybackVersion = {
   v: number;
-  action: string;
   time: string;
   user: string;
-  fields: { name: string; before: string; after: string }[];
+  action: string;
   oldHash: string;
   newHash: string;
   verified: "verified" | "warning" | "failed";
-  ip: string;
-  device: string;
-  comment?: string;
+  fields?: PlaybackField[];
+  ip?: string | null;
+  device?: string | null;
+  comment?: string | null;
 };
 
 function generateVersions(recordId: string, title: string): PlaybackVersion[] {
@@ -70,9 +85,7 @@ function generateVersions(recordId: string, title: string): PlaybackVersion[] {
     },
     {
       action: `Vital signs signed`,
-      fields: [
-        { name: "vitals", before: "128/82 · 72bpm", after: "124/80 · 70bpm · SpO₂ 98%" },
-      ],
+      fields: [{ name: "vitals", before: "128/82 · 72bpm", after: "124/80 · 70bpm · SpO₂ 98%" }],
     },
   ];
   return timeline.map((t, i) => ({
@@ -90,18 +103,153 @@ function generateVersions(recordId: string, title: string): PlaybackVersion[] {
   }));
 }
 
+// export function IntegrityPlaybackModal({
+//   open,
+//   onClose,
+//   recordId,
+//   recordTitle,
+//   entityType = "CareRecord",
+// }: {
+//   open: boolean;
+//   onClose: () => void;
+//   recordId: string;
+//   recordTitle: string;
+//   entityType?: string;
+// }) {
+//   const { data: versions = [], isLoading } = useIntegrityHistory(
+//     entityType,
+//     recordId,
+//     open, // only fetch when modal is open
+//   );
+
+//   console.log({ versions });
+
+//   // const versions = useMemo(() => generateVersions(recordId, recordTitle), [recordId, recordTitle]);
+//   const [current, setCurrent] = useState(0);
+//   const [playing, setPlaying] = useState(false);
+//   const [speed, setSpeed] = useState(1);
+//   const [compare, setCompare] = useState<[number, number] | null>(null);
+//   const scrollRef = useRef<HTMLDivElement>(null);
+
+//   useEffect(() => {
+//     if (!open) return;
+//     setCurrent(0);
+//     setPlaying(false);
+//     setCompare(null);
+//   }, [open, recordId]);
+
+//   useEffect(() => {
+//     if (!playing) return;
+//     const iv = setInterval(() => {
+//       setCurrent((c) => {
+//         if (c >= versions.length - 1) {
+//           setPlaying(false);
+//           return c;
+//         }
+//         return c + 1;
+//       });
+//     }, 1400 / speed);
+//     return () => clearInterval(iv);
+//   }, [playing, speed, versions.length]);
+
+//   useEffect(() => {
+//     const el = scrollRef.current?.querySelector<HTMLElement>(`[data-v="${current}"]`);
+//     el?.scrollIntoView({ behavior: "smooth", block: "center" });
+//   }, [current]);
+
+//   if (!open) return null;
+
+//   const version = versions[current];
+//   const allVerified = versions.every((v) => v.verified === "verified");
+//   const single = versions.length === 1;
+
+//   return (
+//     <div className="fixed inset-0 z-50 flex flex-col bg-background animate-in fade-in">
+//       {/* Header */}
+//     </div>
+//   );
+// }
+
+// export function ReplayHistoryButton({
+//   recordId,
+//   recordTitle,
+//   variant = "outline",
+// }: {
+//   recordId: string;
+//   recordTitle: string;
+//   variant?: "outline" | "icon" | "ghost";
+// }) {
+//   const [open, setOpen] = useState(false);
+//   return (
+//     <>
+//       {variant === "icon" ? (
+//         <button
+//           onClick={() => setOpen(true)}
+//           title="Replay Record History"
+//           className="rounded-md p-1.5 text-muted-foreground hover:bg-secondary hover:text-primary"
+//         >
+//           <History className="h-4 w-4" />
+//         </button>
+//       ) : variant === "ghost" ? (
+//         <button
+//           onClick={() => setOpen(true)}
+//           className="inline-flex items-center gap-1.5 text-xs font-semibold text-primary hover:underline"
+//         >
+//           <History className="h-3.5 w-3.5" /> Replay history
+//         </button>
+//       ) : (
+//         <button
+//           onClick={() => setOpen(true)}
+//           className="inline-flex items-center gap-1.5 rounded-lg border border-border bg-card px-3 py-2 text-xs font-semibold hover:bg-secondary"
+//         >
+//           <History className="h-3.5 w-3.5" /> Replay Record History
+//         </button>
+//       )}
+//       <IntegrityPlaybackModal
+//         open={open}
+//         onClose={() => setOpen(false)}
+//         recordId={recordId}
+//         recordTitle={recordTitle}
+//       />
+//     </>
+//   );
+// }
+
+type PlaybackField = {
+  name: string;
+  before: string;
+  after: string;
+};
+
+// function shortHash(hash?: string | null) {
+//   if (!hash || hash === "—") return "—";
+//   if (hash.length <= 12) return hash;
+//   return `${hash.slice(0, 4)}…${hash.slice(-4)}`;
+// }
+
+function formatTime(value?: string | null) {
+  if (!value) return "—";
+  const d = new Date(value);
+  if (Number.isNaN(d.getTime())) return value;
+  return d.toLocaleString("en-GB");
+}
+
 export function IntegrityPlaybackModal({
   open,
   onClose,
   recordId,
   recordTitle,
+  entityType = "CareRecord",
 }: {
   open: boolean;
   onClose: () => void;
   recordId: string;
   recordTitle: string;
+  entityType?: string;
 }) {
-  const versions = useMemo(() => generateVersions(recordId, recordTitle), [recordId, recordTitle]);
+  const { data, isLoading } = useIntegrityHistory(entityType, recordId, open);
+  const versions = (data ?? []) as PlaybackVersion[];
+
   const [current, setCurrent] = useState(0);
   const [playing, setPlaying] = useState(false);
   const [speed, setSpeed] = useState(1);
@@ -113,10 +261,10 @@ export function IntegrityPlaybackModal({
     setCurrent(0);
     setPlaying(false);
     setCompare(null);
-  }, [open, recordId]);
+  }, [open, recordId, entityType]);
 
   useEffect(() => {
-    if (!playing) return;
+    if (!playing || versions.length === 0) return;
     const iv = setInterval(() => {
       setCurrent((c) => {
         if (c >= versions.length - 1) {
@@ -136,9 +284,89 @@ export function IntegrityPlaybackModal({
 
   if (!open) return null;
 
-  const version = versions[current];
+  // ── Loading state ──────────────────────────────────────────────
+  if (isLoading) {
+    return (
+      <div className="fixed inset-0 z-50 flex flex-col bg-background animate-in fade-in">
+        <div className="flex items-center justify-between border-b border-border bg-card px-6 py-4">
+          <div className="flex items-center gap-3">
+            <div className="grid h-10 w-10 place-items-center rounded-lg bg-primary text-primary-foreground">
+              <History className="h-5 w-5" />
+            </div>
+            <div>
+              <p className="text-sm font-semibold">Integrity Playback</p>
+              <p className="text-xs text-muted-foreground">
+                Loading history for{" "}
+                <span className="font-medium text-foreground">{recordTitle}</span>
+              </p>
+            </div>
+          </div>
+          <button
+            onClick={onClose}
+            aria-label="Close"
+            className="rounded-md p-2 text-muted-foreground hover:bg-secondary hover:text-foreground"
+          >
+            <X className="h-4 w-4" />
+          </button>
+        </div>
+        <div className="flex flex-1 items-center justify-center">
+          <p className="text-sm text-muted-foreground">Loading integrity history…</p>
+        </div>
+      </div>
+    );
+  }
+
+  // ── Empty state ────────────────────────────────────────────────
+  if (!versions.length) {
+    return (
+      <div className="fixed inset-0 z-50 flex flex-col bg-background animate-in fade-in">
+        <div className="flex items-center justify-between border-b border-border bg-card px-6 py-4">
+          <div className="flex items-center gap-3">
+            <div className="grid h-10 w-10 place-items-center rounded-lg bg-primary text-primary-foreground">
+              <History className="h-5 w-5" />
+            </div>
+            <div>
+              <p className="text-sm font-semibold">Integrity Playback</p>
+              <p className="text-xs text-muted-foreground">
+                <span className="font-medium text-foreground">{recordTitle}</span> · {recordId}
+              </p>
+            </div>
+          </div>
+          <button
+            onClick={onClose}
+            aria-label="Close"
+            className="rounded-md p-2 text-muted-foreground hover:bg-secondary hover:text-foreground"
+          >
+            <X className="h-4 w-4" />
+          </button>
+        </div>
+        <div className="flex flex-1 flex-col items-center justify-center gap-3 p-6 text-center">
+          <div className="grid h-14 w-14 place-items-center rounded-2xl bg-secondary text-muted-foreground">
+            <FileText className="h-6 w-6" />
+          </div>
+          <p className="text-sm font-semibold">No integrity history</p>
+          <p className="max-w-sm text-xs text-muted-foreground">
+            No hashed versions were found for this {entityType}. Create or update the record to
+            generate an integrity chain.
+          </p>
+          <BtnPrimary onClick={onClose}>Close</BtnPrimary>
+        </div>
+      </div>
+    );
+  }
+
+  // ── Safe data access ───────────────────────────────────────────
+  const safeIndex = Math.min(current, versions.length - 1);
+  const version = versions[safeIndex] as PlaybackVersion;
+  const fields = version.fields ?? [];
   const allVerified = versions.every((v) => v.verified === "verified");
   const single = versions.length === 1;
+  const statusTone =
+    version.verified === "verified"
+      ? ("success" as const)
+      : version.verified === "failed"
+        ? ("critical" as const)
+        : ("warning" as const);
 
   return (
     <div className="fixed inset-0 z-50 flex flex-col bg-background animate-in fade-in">
@@ -191,10 +419,10 @@ export function IntegrityPlaybackModal({
           ) : (
             <ol className="relative space-y-4 border-l-2 border-success/40 pl-6">
               {versions.map((v, i) => {
-                const active = i === current;
+                const active = i === safeIndex;
                 const isLast = i === versions.length - 1;
                 return (
-                  <li key={v.v} data-v={i} className="relative">
+                  <li key={`${v.v}-${i}`} data-v={i} className="relative">
                     <span
                       className={
                         "absolute -left-[29px] top-1 grid h-4 w-4 place-items-center rounded-full ring-4 ring-background transition " +
@@ -221,9 +449,20 @@ export function IntegrityPlaybackModal({
                             v{v.v}
                             {isLast ? " · Current" : ""}
                           </Badge>
-                          <ShieldCheck className="h-3.5 w-3.5 text-success" />
+                          <ShieldCheck
+                            className={
+                              "h-3.5 w-3.5 " +
+                              (v.verified === "verified"
+                                ? "text-success"
+                                : v.verified === "failed"
+                                  ? "text-critical"
+                                  : "text-warning")
+                            }
+                          />
                         </div>
-                        <span className="text-[11px] text-muted-foreground">{v.time}</span>
+                        <span className="text-[11px] text-muted-foreground">
+                          {formatTime(v.time)}
+                        </span>
                       </div>
                       <p className="mt-2 text-sm font-semibold">{v.action}</p>
                       <p className="text-xs text-muted-foreground">by {v.user}</p>
@@ -242,7 +481,6 @@ export function IntegrityPlaybackModal({
 
         {/* Detail column */}
         <div className="flex-1 overflow-y-auto p-6">
-          {/* Event details */}
           <div className="grid gap-4 lg:grid-cols-3">
             <Card className="p-5 lg:col-span-2">
               <div className="flex items-center justify-between">
@@ -252,11 +490,17 @@ export function IntegrityPlaybackModal({
                   </p>
                   <h3 className="mt-1 text-lg font-semibold">{version.action}</h3>
                   <p className="text-xs text-muted-foreground">
-                    <Clock className="mr-1 inline h-3 w-3" /> {version.time} · {version.user}
+                    <Clock className="mr-1 inline h-3 w-3" /> {formatTime(version.time)} ·{" "}
+                    {version.user}
                   </p>
                 </div>
-                <Badge tone="success">
-                  <ShieldCheck className="h-3 w-3" /> Verified
+                <Badge tone={statusTone}>
+                  <ShieldCheck className="h-3 w-3" />
+                  {version.verified === "verified"
+                    ? "Verified"
+                    : version.verified === "failed"
+                      ? "Failed"
+                      : "Warning"}
                 </Badge>
               </div>
 
@@ -264,25 +508,31 @@ export function IntegrityPlaybackModal({
                 <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
                   Field-level changes
                 </p>
-                <ul className="mt-2 space-y-2">
-                  {version.fields.map((f) => (
-                    <li key={f.name} className="rounded-xl border border-border p-3">
-                      <p className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
-                        {f.name}
-                      </p>
-                      <div className="mt-1 grid gap-2 sm:grid-cols-2">
-                        <div className="rounded-lg bg-critical-soft p-2 text-xs">
-                          <span className="text-critical">− previous</span>
-                          <p className="mt-0.5 font-medium">{f.before}</p>
+                {fields.length === 0 ? (
+                  <p className="mt-2 text-xs text-muted-foreground">
+                    No field-level diff available for this version.
+                  </p>
+                ) : (
+                  <ul className="mt-2 space-y-2">
+                    {fields.map((f) => (
+                      <li key={f.name} className="rounded-xl border border-border p-3">
+                        <p className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
+                          {f.name}
+                        </p>
+                        <div className="mt-1 grid gap-2 sm:grid-cols-2">
+                          <div className="rounded-lg bg-critical-soft p-2 text-xs">
+                            <span className="text-critical">− previous</span>
+                            <p className="mt-0.5 font-medium">{f.before}</p>
+                          </div>
+                          <div className="rounded-lg bg-success-soft p-2 text-xs">
+                            <span className="text-success">+ updated</span>
+                            <p className="mt-0.5 font-medium">{f.after}</p>
+                          </div>
                         </div>
-                        <div className="rounded-lg bg-success-soft p-2 text-xs">
-                          <span className="text-success">+ updated</span>
-                          <p className="mt-0.5 font-medium">{f.after}</p>
-                        </div>
-                      </div>
-                    </li>
-                  ))}
-                </ul>
+                      </li>
+                    ))}
+                  </ul>
+                )}
               </div>
 
               <div className="mt-5 grid gap-3 sm:grid-cols-2">
@@ -291,7 +541,7 @@ export function IntegrityPlaybackModal({
                     Previous SHA-256
                   </p>
                   <code className="mt-1 block break-all font-mono text-[11px]">
-                    {version.oldHash}
+                    {version.oldHash || "—"}
                   </code>
                 </div>
                 <div className="rounded-xl border border-primary/40 bg-primary-soft p-3">
@@ -299,17 +549,17 @@ export function IntegrityPlaybackModal({
                     New SHA-256
                   </p>
                   <code className="mt-1 block break-all font-mono text-[11px]">
-                    {version.newHash}
+                    {version.newHash || "—"}
                   </code>
                 </div>
               </div>
 
               <div className="mt-4 grid grid-cols-2 gap-2 text-[11px] text-muted-foreground sm:grid-cols-4">
                 <span className="flex items-center gap-1.5">
-                  <Wifi className="h-3 w-3" /> {version.ip}
+                  <Wifi className="h-3 w-3" /> {version.ip || "—"}
                 </span>
                 <span className="flex items-center gap-1.5">
-                  <Monitor className="h-3 w-3" /> {version.device}
+                  <Monitor className="h-3 w-3" /> {version.device || "—"}
                 </span>
                 <span className="flex items-center gap-1.5">
                   <Hash className="h-3 w-3" /> SHA-256
@@ -334,13 +584,48 @@ export function IntegrityPlaybackModal({
               <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
                 Integrity status
               </p>
-              <div className="mt-3 rounded-2xl border border-success/30 bg-success-soft p-5 text-center">
-                <div className="mx-auto grid h-14 w-14 place-items-center rounded-full bg-success text-success-foreground animate-in zoom-in-50">
+              <div
+                className={
+                  "mt-3 rounded-2xl border p-5 text-center " +
+                  (version.verified === "verified"
+                    ? "border-success/30 bg-success-soft"
+                    : version.verified === "failed"
+                      ? "border-critical/30 bg-critical-soft"
+                      : "border-warning/30 bg-warning-soft")
+                }
+              >
+                <div
+                  className={
+                    "mx-auto grid h-14 w-14 place-items-center rounded-full " +
+                    (version.verified === "verified"
+                      ? "bg-success text-success-foreground"
+                      : version.verified === "failed"
+                        ? "bg-critical text-critical-foreground"
+                        : "bg-warning text-warning-foreground")
+                  }
+                >
                   <CheckCircle2 className="h-7 w-7" />
                 </div>
-                <p className="mt-3 text-sm font-semibold text-success">Verified</p>
+                <p
+                  className={
+                    "mt-3 text-sm font-semibold " +
+                    (version.verified === "verified"
+                      ? "text-success"
+                      : version.verified === "failed"
+                        ? "text-critical"
+                        : "text-warning")
+                  }
+                >
+                  {version.verified === "verified"
+                    ? "Verified"
+                    : version.verified === "failed"
+                      ? "Failed"
+                      : "Warning"}
+                </p>
                 <p className="mt-1 text-[11px] text-muted-foreground">
-                  Hash matches ledger byte-for-byte
+                  {version.verified === "verified"
+                    ? "Hash matches ledger byte-for-byte"
+                    : "Hash does not match stored ledger value"}
                 </p>
               </div>
               <dl className="mt-4 space-y-2 text-xs">
@@ -350,11 +635,7 @@ export function IntegrityPlaybackModal({
                 </div>
                 <div className="flex justify-between">
                   <dt className="text-muted-foreground">Verified at</dt>
-                  <dd>{new Date().toLocaleTimeString("en-GB")}</dd>
-                </div>
-                <div className="flex justify-between">
-                  <dt className="text-muted-foreground">Duration</dt>
-                  <dd>0.42s</dd>
+                  <dd>{formatTime(version.time)}</dd>
                 </div>
                 <div className="flex justify-between">
                   <dt className="text-muted-foreground">Method</dt>
@@ -373,18 +654,19 @@ export function IntegrityPlaybackModal({
                   Every version cryptographically links to the previous.
                 </p>
               </div>
-              <Badge tone="success">
-                <GitCommit className="h-3 w-3" /> {versions.length} links · intact
+              <Badge tone={allVerified ? "success" : "critical"}>
+                <GitCommit className="h-3 w-3" /> {versions.length} links ·{" "}
+                {allVerified ? "intact" : "issues found"}
               </Badge>
             </div>
             <div className="mt-4 flex items-stretch gap-2 overflow-x-auto pb-2">
               {versions.map((v, i) => (
-                <div key={v.v} className="flex items-center">
+                <div key={`${v.v}-chain-${i}`} className="flex items-center">
                   <button
                     onClick={() => setCurrent(i)}
                     className={
                       "min-w-[168px] rounded-xl border p-3 text-left transition " +
-                      (i === current
+                      (i === safeIndex
                         ? "border-primary bg-primary-soft"
                         : "border-border bg-card hover:border-primary/40")
                     }
@@ -403,10 +685,10 @@ export function IntegrityPlaybackModal({
             </div>
           </Card>
 
-          {/* Compare toggle */}
+          {/* Compare versions */}
           {!single && (
             <Card className="mt-4 p-5">
-              <div className="flex items-center justify-between">
+              <div className="flex flex-wrap items-center justify-between gap-3">
                 <div>
                   <h4 className="text-sm font-semibold">Compare versions</h4>
                   <p className="text-xs text-muted-foreground">
@@ -431,9 +713,7 @@ export function IntegrityPlaybackModal({
                   <select
                     className="h-8 rounded-lg border border-border bg-card px-2"
                     value={compare?.[1] ?? versions.length - 1}
-                    onChange={(e) =>
-                      setCompare([compare?.[0] ?? 0, Number(e.target.value)])
-                    }
+                    onChange={(e) => setCompare([compare?.[0] ?? 0, Number(e.target.value)])}
                   >
                     {versions.map((v, i) => (
                       <option key={i} value={i}>
@@ -443,20 +723,23 @@ export function IntegrityPlaybackModal({
                   </select>
                 </div>
               </div>
-              {compare && (
+
+              {compare && versions[compare[0]] && versions[compare[1]] && (
                 <div className="mt-4 grid gap-3 sm:grid-cols-2">
                   {[versions[compare[0]], versions[compare[1]]].map((v, idx) => (
                     <div key={idx} className="rounded-xl border border-border p-3">
                       <div className="flex items-center justify-between">
                         <Badge tone="info">v{v.v}</Badge>
-                        <span className="text-[11px] text-muted-foreground">{v.time}</span>
+                        <span className="text-[11px] text-muted-foreground">
+                          {formatTime(v.time)}
+                        </span>
                       </div>
                       <p className="mt-2 text-sm font-semibold">{v.action}</p>
                       <code className="mt-2 block break-all rounded bg-secondary px-1.5 py-1 font-mono text-[11px]">
                         {v.newHash}
                       </code>
                       <ul className="mt-2 space-y-1 text-xs">
-                        {v.fields.map((f) => (
+                        {(v.fields ?? []).map((f: PlaybackField) => (
                           <li key={f.name}>
                             <span className="text-muted-foreground">{f.name}:</span>{" "}
                             <span className="font-medium">{f.after}</span>
@@ -470,7 +753,6 @@ export function IntegrityPlaybackModal({
             </Card>
           )}
 
-          {/* Success illustration when everything verified */}
           {allVerified && !single && (
             <Card className="mt-4 border-success/30 bg-success-soft p-6 text-center">
               <div className="mx-auto grid h-16 w-16 place-items-center rounded-full bg-success text-success-foreground">
@@ -500,7 +782,7 @@ export function IntegrityPlaybackModal({
               <RotateCcw className="h-4 w-4" />
             </button>
             <button
-              onClick={() => setCurrent(Math.max(0, current - 1))}
+              onClick={() => setCurrent(Math.max(0, safeIndex - 1))}
               className="rounded-lg p-2 text-muted-foreground hover:bg-secondary hover:text-foreground"
               aria-label="Previous"
             >
@@ -514,7 +796,7 @@ export function IntegrityPlaybackModal({
               {playing ? "Pause" : "Play"}
             </button>
             <button
-              onClick={() => setCurrent(Math.min(versions.length - 1, current + 1))}
+              onClick={() => setCurrent(Math.min(versions.length - 1, safeIndex + 1))}
               className="rounded-lg p-2 text-muted-foreground hover:bg-secondary hover:text-foreground"
               aria-label="Next"
             >
@@ -550,7 +832,7 @@ export function IntegrityPlaybackModal({
             <div className="relative h-1.5 flex-1 overflow-hidden rounded-full bg-secondary">
               <div
                 className="absolute inset-y-0 left-0 rounded-full bg-primary transition-all"
-                style={{ width: `${((current + 1) / versions.length) * 100}%` }}
+                style={{ width: `${((safeIndex + 1) / versions.length) * 100}%` }}
               />
             </div>
             <span className="text-[11px] text-muted-foreground tabular-nums">
@@ -571,13 +853,16 @@ export function IntegrityPlaybackModal({
 export function ReplayHistoryButton({
   recordId,
   recordTitle,
+  entityType = "CareRecord",
   variant = "outline",
 }: {
   recordId: string;
   recordTitle: string;
+  entityType?: string;
   variant?: "outline" | "icon" | "ghost";
 }) {
   const [open, setOpen] = useState(false);
+
   return (
     <>
       {variant === "icon" ? (
@@ -603,11 +888,13 @@ export function ReplayHistoryButton({
           <History className="h-3.5 w-3.5" /> Replay Record History
         </button>
       )}
+
       <IntegrityPlaybackModal
         open={open}
         onClose={() => setOpen(false)}
         recordId={recordId}
         recordTitle={recordTitle}
+        entityType={entityType}
       />
     </>
   );

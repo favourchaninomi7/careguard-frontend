@@ -56,10 +56,14 @@ export interface AuditLogQuery {
 
 export const auditService = {
   async getLogs(params: AuditLogQuery = {}) {
-    const { data } = await api.get("/audit/logs", { params });
+    const res = await api.get("/audit/logs", { params });
     // api body is usually { success, message, data, timestamp }
     // where data is either the list or { data, meta }
-    return data;
+    const payload = res.data?.data ?? res.data;
+    return {
+      data: payload?.data ?? payload,
+      meta: payload?.meta ?? res.data?.meta,
+    };
   },
 
   async getByEntity(entityType: string, entityId: string) {

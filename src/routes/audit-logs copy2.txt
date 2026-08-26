@@ -1,0 +1,219 @@
+import { useMemo, useState } from "react";
+import { createFileRoute } from "@tanstack/react-router";
+import { AppShell } from "@/components/app-shell";
+import { Card, SectionHeader, Badge } from "@/components/ui-kit";
+import { Filter, Download, ChevronLeft, ChevronRight } from "lucide-react";
+import { ReplayHistoryButton } from "@/components/integrity-playback";
+import { useAuditLogs } from "@/hooks/use-audit-logs";
+import type { AuditLogItem } from "@/services/audit-service";
+
+export const Route = createFileRoute("/audit-logs copy")({
+  head: () => ({ meta: [{ title: "Audit Logs — CareGuard" }] }),
+  component: AuditPage,
+});
+
+const tone = (s: string) =>
+  s === "Verified" || s === "SUCCESS"
+    ? ("success" as const)
+    : s === "Integrity failed" || s === "FAILURE"
+      ? ("critical" as const)
+      : ("warning" as const);
+
+function formatTime(iso: string) {
+  return new Date(iso).toLocaleTimeString([], {
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: false,
+  });
+}
+
+function shortHash(hash: string | null) {
+  if (!hash) return "—";
+  if (hash.length <= 12) return hash;
+  return `${hash.slice(0, 4)}…${hash.slice(-4)}`;
+}
+
+function recordLine(log: AuditLogItem) {
+  const code = log.entityId || "—";
+  const name = log.residentName;
+  if (name) return `${code} · ${name}`;
+  if (log.entityType) return `${log.entityType} · ${code}`;
+  return code;
+}
+
+function AuditPage() {
+  const [page, setPage] = useState(1);
+  const limit = 20;
+
+  // Optional filters (wire to UI later)
+  const [filters] = useState({
+    // userId: undefined,
+    // action: undefined,
+    // residentId: undefined,
+    // search: undefined,
+    // from / to for "Today" can be set here
+  });
+
+  const query = useMemo(
+    () => ({
+      page,
+      limit,
+      ...filters,
+    }),
+    [page, limit, filters],
+  );
+
+  const { data, isLoading, isFetching, isError } = useAuditLogs(query);
+
+  const items = data?.items ?? [];
+  const meta = data?.meta ?? { total: 0, page: 1, limit, totalPages: 0 };
+
+  const getBadge = (entry: {
+    action?: string;
+    actionLabel?: string;
+    status?: string;
+    statusLabel?: string;
+  }) => {
+    const action = (entry.actionLabel || entry.action || "").toLowerCase();
+    const status = (entry.statusLabel || entry.status || "").toUpperCase();
+
+    // Hash mismatch / integrity failure → critical
+    if (
+      action.includes("mismatch") ||
+      action.includes("integrity_failed") ||
+      action.includes("failed") ||
+      status === "FAILURE" ||
+      status === "INTEGRITY FAILED"
+    ) {
+      return { label: "Failed", tone: "critical" as const };
+    }
+
+    // Successful verification / login etc. → success
+    if (
+      action.includes("verified") ||
+      action.includes("logged in") ||
+      status === "SUCCESS" ||
+      status === "VERIFIED"
+    ) {
+      return { label: "Verified", tone: "success" as const };
+    }
+
+    // Fallback
+    return {
+      label: entry.statusLabel || entry.status || "Info",
+      tone: "warning" as const,
+    };
+  };
+
+  console.log("AuditPage render", { items });
+
+  return (
+    <AppShell>
+      <SectionHeader
+        title="Audit Logs"
+        description="Immutable ledger of every change — old and new SHA-256 hashes preserved."
+        action={
+          <div className="flex gap-2">
+            <button className="inline-flex items-center gap-1.5 rounded-lg border border-border bg-card px-3 py-2 text-xs font-semibold hover:bg-secondary">
+              <Filter className="h-3.5 w-3.5" /> Filters
+            </button>
+            <button className="inline-flex items-center gap-1.5 rounded-lg bg-primary px-3 py-2 text-xs font-semibold text-primary-foreground shadow-elegant hover:bg-primary/90">
+              <Download className="h-3.5 w-3.5" /> Export ledger
+            </button>
+          </div>
+        }
+      />
+
+      <div className="mb-4 flex flex-wrap gap-2">
+        {["Today", "User: All", "Resident: All", "Action: All"].map((f) => (
+          <span
+            key={f}
+            className="inline-flex items-center gap-1.5 rounded-full border border-border bg-card px-3 py-1 text-xs text-muted-foreground"
+          >
+            {f}
+          </span>
+        ))}
+      </div>
+
+      <Card className="p-5">
+        {isLoading ? (
+          <p className="text-sm text-muted-foreground">Loading audit logs…</p>
+        ) : isError ? (
+          <p className="text-sm text-critical">Failed to load audit logs.</p>
+        ) : items.length === 0 ? (
+          <p className="text-sm text-muted-foreground">No audit logs found.</p>
+        ) : (
+          <ol className="relative space-y-5 border-l border-border pl-6">
+            {items.map((e) => (
+              <li key={e.id} className="relative">
+                <span
+                  className={
+                    "absolute -left-[27px] top-1 grid h-4 w-4 place-items-center rounded-full ring-4 ring-card " +
+                    (e.statusLabel === "Verified" || e.status === "SUCCESS"
+                      ? "bg-success"
+                      : e.statusLabel === "Integrity failed" || e.status === "FAILURE"
+                        ? "bg-critical"
+                        : "bg-warning")
+                  }
+                />
+                <div className="flex flex-wrap items-baseline gap-x-2 gap-y-1">
+                  <span className="font-mono text-xs text-muted-foreground">
+                    {formatTime(e.timestamp)}
+                  </span>
+                  <p className="text-sm">
+                    <span className="font-medium">{e.user?.name ?? "System"}</span>{" "}
+                    <span className="text-muted-foreground">{e.actionLabel}</span>
+                  </p>
+                  <Badge tone={getBadge(e).tone}>{getBadge(e).label}</Badge>
+                </div>
+                <p className="mt-1 text-xs text-muted-foreground">
+                  {recordLine(e)} · IP {e.ipAddress ?? "—"}
+                </p>
+                <div className="mt-2 flex flex-wrap items-center gap-2 text-[11px]">
+                  <span className="rounded-md border border-border bg-secondary px-2 py-1 font-mono">
+                    old: {shortHash(e.oldHash)}
+                  </span>
+                  <span className="text-muted-foreground">→</span>
+                  <span className="rounded-md border border-border bg-secondary px-2 py-1 font-mono">
+                    new: {shortHash(e.newHash)}
+                  </span>
+                  <ReplayHistoryButton
+                    recordId={e.entityId}
+                    recordTitle={recordLine(e)}
+                    variant="ghost"
+                  />
+                </div>
+              </li>
+            ))}
+          </ol>
+        )}
+
+        {/* Pagination */}
+        {meta.totalPages > 1 && (
+          <div className="mt-6 flex items-center justify-between border-t border-border pt-4">
+            <p className="text-xs text-muted-foreground">
+              Page {meta.page} of {meta.totalPages} · {meta.total} events
+              {isFetching && !isLoading ? " · refreshing…" : ""}
+            </p>
+            <div className="flex gap-2">
+              <button
+                disabled={page <= 1}
+                onClick={() => setPage((p) => Math.max(1, p - 1))}
+                className="inline-flex items-center gap-1 rounded-lg border border-border bg-card px-3 py-1.5 text-xs font-semibold disabled:opacity-40 hover:bg-secondary"
+              >
+                <ChevronLeft className="h-3.5 w-3.5" /> Previous
+              </button>
+              <button
+                disabled={page >= meta.totalPages}
+                onClick={() => setPage((p) => p + 1)}
+                className="inline-flex items-center gap-1 rounded-lg border border-border bg-card px-3 py-1.5 text-xs font-semibold disabled:opacity-40 hover:bg-secondary"
+              >
+                Next <ChevronRight className="h-3.5 w-3.5" />
+              </button>
+            </div>
+          </div>
+        )}
+      </Card>
+    </AppShell>
+  );
+}

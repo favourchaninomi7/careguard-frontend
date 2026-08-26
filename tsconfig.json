@@ -1,5 +1,5 @@
 {
-  "include": ["src/**/*.ts", "src/**/*.tsx", "vite.config.ts", "eslint.config.js", "src/lib/auth.txt", "src/routes/login copy.txt", "src/components/ProtectedRoute copy.txt", "src/components/modals copy.txt", "src/components/modals copy2.txt", "src/routes/residents.$id copy.txt", "src/routes/residents copy.txt", "src/routes/residents copy2.txt", "src/routes/resid.txt", "src/routes/resi.$id.txt", "src/routes/care-records copy.ttx", "src/routes/medication copy.txt", "src/routes/audit-logs copy.txt", "src/routes/integrity copy.txt", "src/routes/compliance copy.txt", "src/routes/indexm.txt"],
+  "include": ["src/**/*.ts", "src/**/*.tsx", "vite.config.ts", "eslint.config.js", "src/lib/auth.txt", "src/routes/login copy.txt", "src/components/ProtectedRoute copy.txt", "src/components/modals copy.txt", "src/components/modals copy2.txt", "src/routes/residents.$id copy.txt", "src/routes/residents copy.txt", "src/routes/residents copy2.txt", "src/routes/resid.txt", "src/routes/resi.$id.txt", "src/routes/care-records copy.ttx", "src/routes/medication copy.txt", "src/routes/audit-logs copy.txt", "src/routes/integrity copy.txt", "src/routes/compliance copy.txt", "src/routes/indexm.txt", "src/routes/audit-logs copy.2txt", "src/routes/residents/$id copy.txt"],
   "compilerOptions": {
     "target": "ES2022",
     "jsx": "react-jsx",
