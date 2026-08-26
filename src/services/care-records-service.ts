@@ -96,14 +96,16 @@ export interface CreateCareRecordDto {
   recordedAt: string;
 }
 
+type Meta = {
+  total: number;
+  page: number;
+  limit: number;
+  totalPages: number;
+};
+
 export interface CareRecordsResponse {
   data: CareRecord[];
-  meta: {
-    total: number;
-    page: number;
-    limit: number;
-    totalPages: number;
-  };
+  meta: Meta;
 }
 
 export interface CareRecordsStats {
@@ -126,10 +128,10 @@ export const careRecordsService = {
   },
 
   async getAll(page: number = 1, limit: number = 50): Promise<CareRecordsResponse> {
-    const { data } = await api.get<{ data: CareRecordsResponse }>(
-      `/care-records?page=${page}&limit=${limit}`,
-    );
-    return data.data; // Ensure we return the correct shape
+    const res = await api.get<CareRecordsResponse>(`/care-records?page=${page}&limit=${limit}`);
+
+    console.log("careRecordsService.getAll response:", res);
+    return { data: res.data.data, meta: res.data.meta }; // Ensure we return the correct shape
   },
 
   async getStats(): Promise<{ data: CareRecordsStats }> {
