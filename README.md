@@ -112,8 +112,16 @@ src/
 
 Clone the repository
 
+- Frontend Codebase
+
 ```bash
-git clone https://github.com/<username>/careguard-web.git
+git clone https://github.com/favourchaninomi7/careguard-frontend.git
+```
+
+- Backend Codebase
+
+```bash
+git clone https://github.com/favourchaninomi7/careguard-backend.git
 ```
 
 Install dependencies
@@ -203,9 +211,14 @@ VITE_API_URL=http://localhost:3000/api
 
 ---
 
-## License
+## Demonstration Administrator Credentials
 
-MIT
+The following credentials were created for the purpose of demonstrating and evaluating the CareGuard application:
+
+*Administrator Email:* [admin@careguard.com](mailto:admin@careguard.com)
+*Administrator Password:* 11223344
+
+> *Note:* These credentials are provided for academic demonstration and testing purposes only.
 
 ---
 
